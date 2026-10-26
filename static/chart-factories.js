@@ -11,7 +11,7 @@ Chart.defaults.borderColor = '#1f2937';
 // PAGE_SIZES value — controls persist it, so the default stays the
 // restore fallback rather than the only choice.
 const PAGE_SIZE = 10;
-const PAGE_SIZES = [5, 10, 20, 30];
+const PAGE_SIZES = [5, 10, 20, 30, 50];
 
 // Paging wrapper shared by the chart factories: slices a {label: row}
 // dataset pageSize rows at a time and lets `fill` load the visible rows
