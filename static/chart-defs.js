@@ -128,15 +128,15 @@ const familyRows = (rows, byVariant) => Object.fromEntries(
 // 'rocket' filter (site charts), and `rows` the filter-state ->
 // {name: counts} mapping shared by its bar and donut views.
 const GROUPS = {
-  rocket:       {key: 'rockets', label: 'By rocket', column: 'Rocket', filters: ['country'], countryMap: ROCKET_COUNTRIES,
+  rocket:       {key: 'rockets', label: 'Rocket', column: 'Rocket', filters: ['country'], countryMap: ROCKET_COUNTRIES,
                  rows: s => applyCountryFilter(yearRows('rockets', s.year), s.country, ROCKET_COUNTRIES)},
-  manufacturer: {key: 'manufacturers', label: 'By manufacturer', column: 'Manufacturer', names: STATS.manufacturerNames,
+  manufacturer: {key: 'manufacturers', label: 'Manufacturer', column: 'Manufacturer', names: STATS.manufacturerNames,
                  filters: ['country'], countryMap: MFR_COUNTRIES, rows: s => applyCountryFilter(yearRows('manufacturers', s.year), s.country, MFR_COUNTRIES)},
-  country:      {key: 'countries', label: 'By country', column: 'Country', names: STATS.countryNames, filters: [],
+  country:      {key: 'countries', label: 'Country', column: 'Country', names: STATS.countryNames, filters: [],
                  rows: s => yearRows('countries', s.year)},
   // The 'rocket' filter re-aggregates a site's rows by which rockets
   // flew from it.
-  site:         {key: 'sites', label: 'By launch site', column: 'Site', names: STATS.siteNames, filters: ['rocket'],
+  site:         {key: 'sites', label: 'Launch site', column: 'Site', names: STATS.siteNames, filters: ['rocket'],
                  entities: rocketEntities, rows: s => siteRows(yearRows('sites', s.year), s.rockets)},
 };
 
@@ -147,10 +147,10 @@ const GROUPS = {
 const barDef = g => ({label: g.label, kind: 'Bars', filters: ['year', ...g.filters, 'pageSize'], countryMap: g.countryMap,
                       entities: g.entities, unit: 'launches', data: g.rows,
                       mount: pane => stackedBarChart(pane.querySelector('canvas'), g.names)});
-const donutDef = g => ({label: g.label, kind: 'Donut', filters: ['year', ...g.filters, 'success'], countryMap: g.countryMap,
+const donutDef = g => ({label: g.label, kind: 'Donuts', filters: ['year', ...g.filters, 'success'], countryMap: g.countryMap,
                         entities: g.entities, data: s => donutSlices(g.rows(s), s.successOnly),
                         mount: pane => donutChart(pane, g.names, g.column)});
-const trendDef = g => ({label: g.label, kind: 'Trend', filters: ['entity', 'success', 'cumulative'], unit: 'launches',
+const trendDef = g => ({label: g.label, kind: 'Trends', filters: ['entity', 'success', 'cumulative'], unit: 'launches',
                         // {entity: {year: count}} rows bound the shared axis on the largest
                         // single point, not a row total.
                         rowMax: series => Math.max(0, ...Object.values(series)),
@@ -194,12 +194,12 @@ const variantBarDef = (label, nested, {filters = [], countryMap, names, entities
 // `defaultEntity`, the trend picker's most-launched fallback.
 const CHART_DEFS = {
   'by-rocket': barDef(GROUPS.rocket),
-  'by-rocket-family': variantBarDef('By rocket family',
+  'by-rocket-family': variantBarDef('Rocket family',
     s => yearRows('families', s.year)),
   // Manufacturer bars regroup the flat rockets bucket into
   // {mfr: {rocket: cats}} via the stats map — no nested yearly bucket
   // needed.
-  'by-manufacturer': variantBarDef('By manufacturer',
+  'by-manufacturer': variantBarDef('Manufacturer',
     s => rocketsByMfr(yearRows('rockets', s.year)),
     {filters: ['country'], countryMap: MFR_COUNTRIES,
      names: STATS.manufacturerNames}),
@@ -207,7 +207,7 @@ const CHART_DEFS = {
   // Sites get the variant stack too — the bucket is already nested
   // {site: {rocket: cats}}, and the rocket filter subsets which
   // rockets feed each site in either stack mode.
-  'by-site': variantBarDef('By launch site',
+  'by-site': variantBarDef('Launch site',
     s => siteNested(yearRows('sites', s.year), s.rockets),
     {filters: ['rocket'], names: STATS.siteNames, entities: rocketEntities}),
   'by-rocket-donut': donutDef(GROUPS.rocket),

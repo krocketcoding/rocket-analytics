@@ -13,13 +13,18 @@
 // TABLE_SPECS in tables.js, so the same table can be open in both
 // panes (with independent sorts and searches).
 const TABLE_VIEWS = {
-  upcoming: {label: 'Upcoming launches', kind: 'Table', filters: ['q']},
-  past:     {label: 'Previous launches', kind: 'Table', filters: ['launchYear', 'q']},
-  rockets:  {label: 'Rockets',           kind: 'Table', filters: ['q']},
+  upcoming: {label: 'Upcoming launches', kind: 'Tables', filters: ['q']},
+  past:     {label: 'Previous launches', kind: 'Tables', filters: ['launchYear', 'q']},
+  rockets:  {label: 'Rockets',           kind: 'Tables', filters: ['q']},
 };
 const VIEW_DEFS = {...CHART_DEFS, ...TABLE_VIEWS};
 const isChart = id => id in CHART_DEFS;
 const DEFAULT_VIEWS = ['by-rocket', 'upcoming'];
+
+// Kinds are plural for the picker's optgroup headers, but the pane's
+// kind tag describes one view — the tag reads the singular form.
+const KIND_TAGS = {Bars: 'Bar', Donuts: 'Donut', Trends: 'Trend',
+                   Tables: 'Table'};
 
 // The 'q' filter: a search box plus live match count for table panes.
 // The apply routine is stored on the pane so mountPane can re-run it
@@ -154,7 +159,7 @@ function refreshPickers() {
   for (const p of panes) {
     const kinds = [...new Set(Object.values(VIEW_DEFS).map(d => d.kind))];
     p.select.innerHTML = kinds.map(kind =>
-      `<optgroup label="${esc(kind === 'Table' ? 'Tables' : kind)}">${Object.entries(VIEW_DEFS)
+      `<optgroup label="${esc(kind)}">${Object.entries(VIEW_DEFS)
         .filter(([, d]) => d.kind === kind)
         .map(([id, d]) => `<option value="${id}">${esc(d.label)}</option>`)
         .join('')}</optgroup>`).join('');
@@ -224,7 +229,7 @@ function mountPane(pane) {
   pane.overflowPop.hidden = true;
   pane.body.replaceChildren();
   pane.pagerEl.hidden = true;
-  pane.kindTag.textContent = def.kind;
+  pane.kindTag.textContent = KIND_TAGS[def.kind] ?? def.kind;
 
   if (isChart(pane.defId)) {
     const chartEl = document.createElement('div');
