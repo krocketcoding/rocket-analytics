@@ -14,7 +14,7 @@
 // panes (with independent sorts and searches).
 const TABLE_VIEWS = {
   upcoming: {label: 'Upcoming launches', kind: 'Table', filters: ['q']},
-  past:     {label: 'Previous launches', kind: 'Table', filters: ['q']},
+  past:     {label: 'Previous launches', kind: 'Table', filters: ['launchYear', 'q']},
   rockets:  {label: 'Rockets',           kind: 'Table', filters: ['q']},
 };
 const VIEW_DEFS = {...CHART_DEFS, ...TABLE_VIEWS};
@@ -48,6 +48,41 @@ FILTER_BUILDERS.q = (pane, onChange) => {
   input.addEventListener('input', () => { pane.applyFilter(); onChange(); });
   wrap.append(input, count, hint);
   return wrap;
+};
+
+// Year scopes for the past-launches table: the distinct launch years
+// in its rows, newest first like the chart scopes.
+const netYear = d => d.net?.slice(0, 4);
+const netYears = list =>
+  [...new Set(list.map(netYear).filter(Boolean))].sort();
+const LAUNCH_SCOPES = {past: netYears(DATA.previous).reverse()};
+
+// The 'launchYear' filter: the same .seg control as the chart year
+// picker, but scoped to the table's own launches. A stale scope — a
+// year the table doesn't contain — resets to the newest. Changing it
+// rebuilds the rows like a table sort does, so the search filter
+// re-runs over the new list.
+FILTER_BUILDERS.launchYear = (pane, onChange) => {
+  const scopes = LAUNCH_SCOPES[pane.defId];
+  const year = scopes.includes(pane.filters.year) ? pane.filters.year : scopes[0];
+  if (year !== pane.filters.year) {
+    pane.filters.year = year;
+    refreshTable(pane);
+  }
+  return makeScopeSeg(year, v => {
+    pane.filters.year = v;
+    refreshTable(pane);
+    onChange();
+  }, scopes);
+};
+
+// Table filter state: the search text, plus the year scope for tables
+// that offer one — seeded from a carried-over chart year when the
+// table has it, else the newest. Unscoped tables get just {q}.
+const freshTableFilters = (defId, year) => {
+  const scopes = LAUNCH_SCOPES[defId];
+  return {q: '', ...(scopes
+    ? {year: scopes.includes(year) ? year : scopes[0]} : {})};
 };
 
 const workspaceEl = $('workspace');
@@ -222,7 +257,8 @@ function makePane() {
     // fresh {q} filter shape instead.
     const keepYear = pane.filters && 'year' in pane.filters
       ? pane.filters.year : DEFAULT_SCOPE;
-    pane.filters = isChart(pane.defId) ? freshFilters(keepYear) : {q: ''};
+    pane.filters = isChart(pane.defId) ? freshFilters(keepYear)
+      : freshTableFilters(pane.defId, keepYear);
     mountPane(pane);
     refreshPickers();
     saveState();
@@ -301,11 +337,12 @@ function exportCsv(pane) {
 // Only non-default values are written, so the default layout hashes to
 // just #by-rocket|upcoming. Multi-value filters are comma lists of
 // percent-encoded names, which keeps ; | @ ^ and , safe as separators.
-// Token keys — y: year; c: country codes (! = exclude); e: entity
-// picks; r: rocket picks; so/cm/vs: successes-only/cumulative/variant
-// toggles; q: table search; t: rockets sort as <key>.<dir>. The same
-// string is kept in localStorage so the layout survives between visits;
-// the hash wins on load.
+// Token keys — y: year scope (charts and the past-launches table);
+// c: country codes (! = exclude); e: entity picks; r: rocket picks;
+// so/cm/vs: successes-only/cumulative/variant toggles; q: table search;
+// t: rockets sort as <key>.<dir>. The same string is kept in
+// localStorage so the layout survives between visits; the hash wins
+// on load.
 const STORAGE_KEY = 'ra-workspace';
 
 const encList = set => [...set].map(encodeURIComponent).join(',');
@@ -327,6 +364,10 @@ function serialize() {
       if (f.rockets?.size) t.push('r' + encList(f.rockets));
     } else {
       if (f.q) t.push('q' + encodeURIComponent(f.q));
+      // The past table carries a year scope too — a non-default pick
+      // (default: newest year) serializes like the chart year.
+      const scopes = LAUNCH_SCOPES[p.defId];
+      if (scopes && f.year !== scopes[0]) t.push('y' + f.year);
       // The rockets table's sort is per-pane filter state — tables.js
       // writes {sort, dir} into it on each header click.
       if (p.defId === 'rockets' && f.sort)
@@ -414,7 +455,7 @@ function applyState(s) {
     p.defId = s.views[i].v;
     p.filters = isChart(p.defId)
       ? Object.assign(freshFilters(DEFAULT_SCOPE), s.views[i].f)
-      : {q: '', ...s.views[i].f};
+      : Object.assign(freshTableFilters(p.defId, DEFAULT_SCOPE), s.views[i].f);
     mountPane(p);
   });
   refreshPickers();

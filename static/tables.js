@@ -75,6 +75,21 @@ function rocketRows(pane) {
   });
 }
 
+// Rows for the past-launches table, scoped to the pane's year pick.
+// Keys stay indices into the source list: the row-click modal looks
+// launches up by original index, so filter after indexing.
+const scopedLaunches = (list, set, year) =>
+  list.map((d, i) => ({rec: d, set, key: i}))
+      .filter(r => r.rec.net?.startsWith(year));
+
+// The oldest year in the fetched window is partial when the page cap
+// truncated the fetch (meta.truncated — the same year stats.js drops
+// from the charts). The table keeps its real launches but flags the
+// year in the note; the previous list is newest-first, so its last
+// launch sits in the partial year.
+const PARTIAL_YEAR = DATA.meta.truncated
+  ? DATA.previous.at(-1)?.net?.slice(0, 4) : null;
+
 // Each spec produces {rec, set, key} rows: set/key become the
 // data-set/data-idx (launches) or data-id (rockets) attributes the
 // row-click modal lookup in app.js keys off.
@@ -82,17 +97,19 @@ const TABLE_SPECS = {
   upcoming: {
     cols: launchCols(false),
     rows: () => DATA.upcoming.map((d, i) => ({rec: d, set: 'upcoming', key: i})),
-    note: () => `Showing the next ${DATA.upcoming.length} launches`,
+    note: (pane, n) => `Showing the next ${n} launches`,
   },
   past: {
     cols: launchCols(true),
-    rows: () => DATA.previous.map((d, i) => ({rec: d, set: 'past', key: i})),
-    note: () => `Showing the last ${DATA.previous.length} launches`,
+    rows: pane => scopedLaunches(DATA.previous, 'past', pane.filters.year),
+    note: (pane, n) => `Showing ${n} launches in ${pane.filters.year}` +
+      (pane.filters.year === PARTIAL_YEAR
+        ? " (partial — older launches weren't fetched)" : ''),
   },
   rockets: {
     cols: rocketCols,
     rows: rocketRows,
-    note: () => `Showing ${Object.keys(DATA.rockets).length} rockets observed in the listed launches`,
+    note: (pane, n) => `Showing ${n} rockets observed in the listed launches`,
   },
 };
 
@@ -104,24 +121,33 @@ function renderTable(pane) {
   const spec = TABLE_SPECS[pane.defId];
   const sortKey = pane.filters.sort || 'launches';
   const sortDir = pane.filters.dir || 'desc';
+  const rows = spec.rows(pane);
   const wrap = document.createElement('div');
   wrap.className = 'table-wrap';
   wrap.innerHTML = `<table><thead><tr>${spec.cols.map(c => {
       const sortable = c.sort ? ` class="sortable" data-sort="${c.sort}"` : '';
       const dir = c.sort && c.sort === sortKey ? ` data-dir="${sortDir}"` : '';
       return `<th${sortable}${dir}>${c.headHtml || esc(c.head)}</th>`;
-    }).join('')}</tr></thead><tbody>${spec.rows(pane).map(r => {
+    }).join('')}</tr></thead><tbody>${rows.map(r => {
       const attrs = r.set === 'rockets'
         ? `data-set="rockets" data-id="${esc(String(r.key))}" tabindex="0"`
         : `data-set="${r.set}" data-idx="${r.key}" tabindex="0"`;
       return `<tr ${attrs}>${spec.cols.map(c =>
         `<td${c.net ? ` data-net="${esc(r.rec.net || '')}"` : ''}>${c.html ? c.html(r.rec) : esc(c.text(r.rec))}</td>`
       ).join('')}</tr>`;
-    }).join('')}</tbody></table><p class="table-note">${esc(spec.note())}</p>`;
+    }).join('')}</tbody></table><p class="table-note">${esc(spec.note(pane, rows.length))}</p>`;
   if (pane.defId === 'rockets')
     wrap.querySelectorAll('th.sortable').forEach(th =>
       th.addEventListener('click', () => sortPaneTable(pane, th.dataset.sort)));
   return wrap;
+}
+
+// Replace a table pane's rendered table with a fresh one, then re-run
+// the search filter — shared by the sort header clicks and the year
+// scope control, which both rebuild the rows.
+function refreshTable(pane) {
+  pane.body.querySelector('.table-wrap').replaceWith(renderTable(pane));
+  pane.applyFilter?.();
 }
 
 // Header click on a sortable rockets column: a new column sorts
@@ -133,8 +159,7 @@ function sortPaneTable(pane, key) {
   const curDir = pane.filters.dir || 'desc';
   pane.filters.sort = key;
   pane.filters.dir = key === curKey && curDir === 'desc' ? 'asc' : 'desc';
-  pane.body.querySelector('.table-wrap').replaceWith(renderTable(pane));
-  pane.applyFilter?.();
+  refreshTable(pane);
   saveState();
 }
 
