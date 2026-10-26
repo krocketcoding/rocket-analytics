@@ -105,24 +105,46 @@ let ratio = 0.5;       // pane A's share of the desktop split
 const paneSizer = new ResizeObserver(entries => entries.forEach(en => {
   en.target.classList.toggle('narrow', en.contentRect.width < 600);
   const pane = panes.find(p => p.el === en.target);
-  if (pane) retestCompact(pane);
+  if (pane) retestOverflow(pane);
 }));
 
-// Compact mode moves the controls row into a Filters popover when the
-// head can't fit it on one line — measured on the real controls, not a
-// fixed width, so a light filter set (a lone picker) stays inline as
-// long as it fits. The signal is head height: one line is about the
-// picker's height, and either wrap mode — the controls dropping to a
-// second line, or wrapping internally — roughly doubles it. Controls
-// are display:none while compacted, so the class comes off to measure.
+// The ⋯ popover is an overflow menu, not a mode: every reflow pulls
+// the controls back inline, then spills them right-to-left until the
+// head fits on one line — a lone picker stays inline as long as it
+// fits, a crowded head keeps just what fits. The signal is head
+// height: one line is about the picker's height, and either wrap mode
+// — controls dropping to a second line or wrapping internally —
+// roughly doubles it. Hidden controls never overflow (nothing to see).
 // Re-runs on resize, view mount, and every saveState — a picker label
-// change ('Rocket: a, b, c') can wrap the head after the fact.
-function retestCompact(pane) {
-  pane.el.classList.remove('compact');
-  const wrapped = pane.select.parentElement.offsetHeight
-    > pane.select.offsetHeight * 1.4;
-  if (wrapped) pane.el.classList.add('compact');
-  else pane.controlsEl.classList.remove('open');
+// change ('Rocket: a, b, c') can wrap the head after the fact. Skipped
+// while the popover is open so a control can't vanish mid-click.
+function retestOverflow(pane) {
+  const pop = pane.overflowPop;
+  const ctrls = pane.controlsEl;
+  const head = pane.select.parentElement;
+  if (!pop.hidden) return;
+  // Everything back inline before measuring — controls keep their
+  // order, and the action buttons re-seat tail-first (focus before
+  // export inserts) so maximize stays the rightmost chip even when
+  // only export overflowed.
+  ctrls.append(...[...pop.children]
+    .filter(el => el !== pane.exportBtn && el !== pane.focusBtn));
+  if (pane.focusBtn.parentElement === pop) head.append(pane.focusBtn);
+  if (pane.exportBtn.parentElement === pop) pane.focusBtn.before(pane.exportBtn);
+  const wraps = () => head.offsetHeight > pane.select.offsetHeight * 1.4;
+  // Spill right-to-left until the head fits one line: controls first,
+  // then the icon buttons — maximize is the last thing to leave the
+  // head. In the pop they render as labeled rows via attr(aria-label);
+  // prepend keeps control order = head order.
+  while (wraps()) {
+    const el = [...ctrls.children].reverse().find(el => !el.hidden)
+      || (pane.exportBtn.parentElement === head ? pane.exportBtn
+         : pane.focusBtn.parentElement === head ? pane.focusBtn : null);
+    if (!el) break;
+    if (el === pane.focusBtn || el === pane.exportBtn) pop.append(el);
+    else pop.prepend(el);
+  }
+  pane.filtersWrap.hidden = !pop.children.length;
 }
 
 // Rebuild a pane's view picker, one optgroup per view kind. Every view
@@ -196,7 +218,10 @@ function mountPane(pane) {
   pane.inst?.chart?.destroy();
   pane.inst = null;
   pane.applyFilter = null;
-  pane.controlsEl.classList.remove('open');
+  // buildControls replaces the controls row — stale overflowed elements
+  // from the previous def must not linger in the popover.
+  pane.overflowPop.replaceChildren();
+  pane.overflowPop.hidden = true;
   pane.body.replaceChildren();
   pane.pagerEl.hidden = true;
   pane.kindTag.textContent = def.kind;
@@ -223,12 +248,13 @@ function mountPane(pane) {
   pane.exportBtn.setAttribute('aria-label', expLabel);
   syncAxes();
   // The new def's controls may be wider or narrower than the last —
-  // remeasure whether the head can still fit them inline.
-  retestCompact(pane);
+  // remeasure what the head can fit inline.
+  retestOverflow(pane);
 }
 
 // Pane skeleton: head row (kind tag, view picker, per-view controls —
-// collapsing into a Filters popover in compact mode — export,
+// spilling right-to-left into a ⋯ overflow popover when they don't
+// fit — export,
 // maximize) over a body holding the view, plus a pager shown only by
 // multi-page charts.
 function makePane() {
@@ -239,8 +265,9 @@ function makePane() {
       <span class="pane-kind"></span>
       <select class="chart-pick" aria-label="View"></select>
       <div class="pane-controls"></div>
-      <div class="pick-filter pane-filters">
-        <button class="chart-pick" type="button">Filters</button>
+      <div class="pick-filter pane-filters" hidden>
+        <button class="chart-pick" type="button" aria-label="More controls" title="More controls">⋯</button>
+        <div class="pick-pop overflow-pop" hidden></div>
       </div>
       <button class="pane-export" type="button" aria-label="Download" title="Download">↓</button>
       <button class="pane-focus" type="button" aria-label="Maximize" title="Maximize">⛶</button>
@@ -260,6 +287,7 @@ function makePane() {
     controlsEl: el.querySelector('.pane-controls'),
     filtersWrap: el.querySelector('.pane-filters'),
     filtersBtn: el.querySelector('.pane-filters .chart-pick'),
+    overflowPop: el.querySelector('.overflow-pop'),
     exportBtn: el.querySelector('.pane-export'),
     focusBtn: el.querySelector('.pane-focus'),
     body: el.querySelector('.pane-body'),
@@ -293,15 +321,20 @@ function makePane() {
     refreshPickers();
     saveState();
   });
-  // The compact-mode Filters button toggles the controls popover; a
-  // click outside the panel or the button closes it. Nested pick-pops
-  // live inside the panel, so they can't close it.
-  pane.filtersBtn.addEventListener('click', () =>
-    pane.controlsEl.classList.toggle('open'));
-  document.addEventListener('click', e => {
-    if (!pane.filtersWrap.contains(e.target) &&
-        !pane.controlsEl.contains(e.target))
-      pane.controlsEl.classList.remove('open');
+  // The ⋯ button toggles the overflow popover; outside clicks close it
+  // for free via charts.js's pick-pop handler (the button's wrapper is
+  // the pop's parent). Nested pick-pops live inside the panel.
+  pane.filtersBtn.addEventListener('click', () => {
+    const pop = pane.overflowPop;
+    pop.hidden = !pop.hidden;
+    // Cap the panel at the space actually left below the button — on
+    // stacked layouts a lower pane's head sits mid-viewport, and a
+    // fixed vh-based cap would let the pop run off the bottom edge
+    // with no way to scroll to the last rows (like Maximize).
+    if (!pop.hidden)
+      pop.style.maxHeight = Math.max(120, Math.min(480,
+        Math.floor(window.innerHeight
+          - pane.filtersBtn.getBoundingClientRect().bottom) - 8)) + 'px';
   });
   pane.exportBtn.addEventListener('click', () =>
     isChart(pane.defId) ? exportPng(pane) : exportCsv(pane));
@@ -390,7 +423,7 @@ const decList = s =>
   s.split(',').filter(Boolean).map(v => decodeURIComponent(v));
 
 // The serialized filter tokens for one pane — shared by the hash
-// serializer and the compact-mode Filters button's active count.
+// serializer and the overflow button's active-filter accent.
 const paneTokens = p => {
   const f = p.filters, t = [];
   if (isChart(p.defId)) {
@@ -417,12 +450,12 @@ const paneTokens = p => {
   return t;
 };
 
-// Compact-mode Filters button: badges the count of user-set filters.
-// 'e' tokens are excluded — the entity picker always carries its
-// mandatory default selection on trend charts, so it isn't a choice.
+// The ⋯ button accents when the pane has user-set filters. 'e' tokens
+// are excluded — the entity picker always carries its mandatory
+// default selection on trend charts, so it isn't a choice.
 function updateFiltersBtn(pane) {
   const n = paneTokens(pane).filter(t => t[0] !== 'e').length;
-  pane.filtersBtn.textContent = n ? `Filters · ${n}` : 'Filters';
+  pane.filtersBtn.title = n ? `More controls — ${n} set` : 'More controls';
   pane.filtersWrap.classList.toggle('has-sel', n > 0);
 }
 
@@ -483,7 +516,7 @@ function saveState() {
   // A filter change can change control widths (picker summaries), so
   // the head's fit gets remeasured and the badge count updated.
   panes.forEach(updateFiltersBtn);
-  panes.forEach(retestCompact);
+  panes.forEach(retestOverflow);
   try { localStorage.setItem(STORAGE_KEY, s); } catch {}
   // replaceState can throw in sandboxed contexts; persistence is
   // best-effort either way.

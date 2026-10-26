@@ -251,15 +251,13 @@ main {
   flex-wrap: wrap;
   gap: 0.5rem;
   margin-bottom: 0.75rem;
-  /* The compact-mode controls popover anchors to the head. */
-  position: relative;
 }
 
 /* The view picker never shrinks past readability — shrinking a flex
    item below its content needs an explicit min-width under its
    min-content floor, and 9rem keeps ~16 chars of the label visible.
-   The floor also counts in the compact-mode fit measurement: if the
-   head can't fit controls *and* a readable picker, it goes compact. */
+   The floor also counts in the overflow measurement: if the head can't
+   fit controls *and* a readable picker, controls move to the ⋯ pop. */
 .pane-head > .chart-pick {
   min-width: 9rem;
 }
@@ -635,9 +633,12 @@ tbody tr[data-set]:focus-visible {
 }
 
 /* Maximize is the pane's main layout control — slightly larger than
-   the export chip. */
+   the export chip, and order-pinned to the head's right edge so it
+   stays the rightmost chip whenever it isn't overflowed into the ⋯
+   pop (the overflow restore already re-seats it tail-first). */
 .pane-focus {
   font-size: 1.05rem;
+  order: 10;
   padding: 0.35rem 0.7rem;
 }
 
@@ -661,61 +662,88 @@ tbody tr[data-set]:focus-visible {
   flex: 0 0 45%;
 }
 
-/* Filters popover button — hidden unless the pane's head can't fit an
-   inline controls row (.compact is toggled by measurement in
-   workspace.js, not a fixed width, so light filter sets stay inline
-   as long as they fit). */
-.pane-filters {
-  display: none;
-}
+/* The ⋯ overflow button + popover — hidden until a control doesn't
+   fit the head (retestOverflow in workspace.js moves them right-to-left
+   into the pop). The wrapper hides via the hidden attr. */
 
-.pane.compact .pane-filters {
-  display: block;
-}
-
-.pane.compact .pane-head > .chart-pick {
-  flex: 1;
-}
-
-/* Compact panes tuck the controls row into a popover under the head —
-   an arbitrary set of segs, pickers, and toggles can't fit a narrow
-   head, and a panel columns them without it. The popover opens over
-   the pane body; nested pick-pops still anchor to their own wrappers. */
-.pane.compact .pane-controls {
-  display: none;
-}
-
-.pane.compact .pane-controls.open {
-  background: var(--surface-active);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-  inset: 100% 0 auto 0;
-  margin-top: 0.4rem;
-  padding: 0.65rem;
-  position: absolute;
-  z-index: 30;
-}
-
-/* Long segs get sideways scroll inside the panel as a last resort. */
-.pane.compact .pane-controls .seg {
-  overflow-x: auto;
-}
-
-.pane.compact .pane-filter {
+/* The overflow popover: pick-pop chrome anchored to the button's right
+   edge, column-stacking whatever controls didn't fit. Two classes to
+   outrank the later .pick-pop rules — left+right both set would anchor
+   it left, hanging it off the viewport. */
+.pane-filters .overflow-pop {
+  left: auto;
+  /* The pick-pop height cap (min(480px, 75vh)) ignores how far down
+     the screen the pop actually sits — vertical segs and overflowed
+     buttons make it tall enough to run off the bottom of short
+     landscape windows. Re-cap it to the viewport minus the header +
+     pane-head allowance; overflow-y: auto scrolls the excess. */
+  max-height: min(480px, calc(100dvh - 8rem));
+  max-width: min(80vw, 22rem);
   min-width: 0;
+  right: 0;
+  width: max-content;
 }
 
-.pane.compact .pane-filter input {
+/* Inside the ⋯ pop the search box claims the full width: the row
+   wraps, input+match-count share the first line, and the 'select a
+   row' hint drops to its own. */
+.pane-filters .overflow-pop .pane-filter {
+  flex-wrap: wrap;
+}
+
+.pane-filters .overflow-pop .pane-filter input {
   flex: 1;
   min-width: 0;
   width: auto;
 }
 
-.pane.compact .pane-hint {
-  display: none;
+.pane-filters .overflow-pop .pane-hint {
+  flex: 0 0 100%;
+}
+
+/* Segs can't share a phone-width panel horizontally — inside the ⋯
+   pop they flip to a vertical list. The buttons become full-width
+   rows, the left-border separators become top separators, and the
+   corner radii move from the end buttons to the top/bottom ones. */
+.pane-filters .overflow-pop .seg {
+  flex-direction: column;
+  width: 100%;
+}
+
+.pane-filters .overflow-pop .seg-btn {
+  text-align: left;
+  width: 100%;
+}
+
+.pane-filters .overflow-pop .seg-btn + .seg-btn {
+  border-left: none;
+  border-top: 1px solid var(--border);
+}
+
+.pane-filters .overflow-pop .seg-btn:first-child {
+  border-radius: 7px 7px 0 0;
+}
+
+.pane-filters .overflow-pop .seg-btn:last-child {
+  border-radius: 0 0 7px 7px;
+}
+
+/* Icon buttons that overflow into the ⋯ pop become full-width labeled
+   rows — the ::after shows their aria-label, which setFocus/mountPane
+   already keep current ('Maximize' ↔ 'Back to split view', etc.). */
+.pane-filters .overflow-pop > .pane-export,
+.pane-filters .overflow-pop > .pane-focus {
+  gap: 0.5rem;
+  justify-content: flex-start;
+  margin-left: 0;
+  padding: 0.4rem 0.6rem;
+  width: 100%;
+}
+
+.pane-filters .overflow-pop > .pane-export::after,
+.pane-filters .overflow-pop > .pane-focus::after {
+  content: attr(aria-label);
+  font-size: 0.8rem;
 }
 
 /* Checkbox pickers (country, rocket, entity): button summarizes the
