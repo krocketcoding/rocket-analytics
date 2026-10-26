@@ -385,9 +385,12 @@ function openRocketModal(id) {
 
   // Provider, mission agency, and manufacturer share one agencies
   // table — the rocket's manufacturer_id resolves straight to it.
+  // entitySection adds the "Provider: name" header; the modal h2 shows
+  // the rocket's name for both tabs, so without it the pane has no
+  // provider name at all.
   const provider = dedupeProviderImage(DATA.agencies[rocket.manufacturer_id], rocket);
   $('rtab-provider').innerHTML = provider
-    ? entityBody(provider, AGENCY_FIELDS, entityLinks(provider))
+    ? entitySection('Provider', provider, AGENCY_FIELDS, entityLinks(provider))
       || '<p class="muted">No details available.</p>'
     : '<p class="muted">No details available.</p>';
 
