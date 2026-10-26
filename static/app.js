@@ -181,11 +181,56 @@ const updateCard = u => {
 </div>`;
 };
 
+// Update text is ~half the gzipped dataset but only the Updates tab
+// reads it, so the online build splits it into a companion script
+// (meta.updates_src) that loads lazily; the offline build ships updates
+// inline and has no updates_src. receiveLaunchUpdates attaches each
+// update list to its launch by index — safe because both files come
+// from the same build and are hash-versioned together. A script tag
+// (not fetch) keeps file:// previews working.
+let updatesPromise = null;
+function loadUpdates() {
+  if (updatesPromise) return updatesPromise;
+  updatesPromise = new Promise((resolve, reject) => {
+    if (!DATA.meta.updates_src) return resolve();
+    window.receiveLaunchUpdates = payload => {
+      for (const group in payload)
+        payload[group].forEach((updates, i) => {
+          DATA[group][i].updates = updates;
+        });
+      resolve();
+    };
+    const s = document.createElement('script');
+    s.src = DATA.meta.updates_src;
+    s.onerror = () => reject(new Error(`Failed to load ${s.src}`));
+    document.body.append(s);
+  });
+  return updatesPromise;
+}
+// Fetch after the load event so it never competes with first paint; a
+// modal opened earlier starts it on demand via renderUpdates.
+addEventListener('load', () => loadUpdates());
+
+// The launch the details modal is currently showing (null when closed).
+let openLaunch = null;
+
 function renderUpdates(d) {
-  const updates = d.updates || [];
-  $('mtab-updates').innerHTML = updates.length
-    ? updates.map(updateCard).join('')
-    : '<p class="muted">No updates for this launch.</p>';
+  const pane = $('mtab-updates');
+  if (d.updates || !DATA.meta.updates_src) {
+    const updates = d.updates || [];
+    pane.innerHTML = updates.length
+      ? updates.map(updateCard).join('')
+      : '<p class="muted">No updates for this launch.</p>';
+    return;
+  }
+  // Not loaded yet — the promise re-renders only if the modal is still
+  // open on this same launch by then.
+  pane.innerHTML = '<p class="muted">Loading updates…</p>';
+  loadUpdates().then(() => {
+    if (openLaunch === d) renderUpdates(d);
+  }, () => {
+    pane.innerHTML = "<p class=\"muted\">Updates couldn't be loaded.</p>";
+  });
 }
 
 const linkList = links => '<ul class="link-list">' + links.map(l =>
@@ -276,9 +321,11 @@ function showModal(m) {
 function closeModal(m) {
   m.hidden = true;
   document.body.style.overflow = '';
+  if (m === modal) openLaunch = null;
 }
 
 function openModal(d) {
+  openLaunch = d;
   $('modal-name').textContent = d.name;
   setImg($('modal-image'), imgSrc(d.image));
   setImg($('modal-infographic'), imgSrc(d.infographic));

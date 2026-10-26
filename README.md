@@ -22,7 +22,9 @@ Fetched launch data is cached in `launch-cache.json` (git ignored) and reused re
 fails, the script falls back to the stale cache rather than failing the build. The number of pages fetched per endpoint
 is set by `PAST_LAUNCH_PAGES` and `UPCOMING_LAUNCH_PAGES` at the top of `pipeline/config.py` (100 launches per page).
 
-Open `site/index.html` in a browser to preview.
+Open `site/index.html` in a browser to preview. Launch update text ships separately as `site/launch-updates.js`:
+it's roughly half the gzipped dataset but is only read when a launch's Updates tab opens, so the page loads it
+lazily after the first render (or on demand when a modal opens).
 
 Each build also produces `site/rocket-analytics-offline.html`, a portable single-file version of the site with the
 stylesheet and all JavaScript inlined — it can be opened in any browser without an internet connection. Mission
@@ -38,12 +40,15 @@ offline build is skipped if a static file is missing.
 - `main.py` drives the `pipeline` package, which fetches upcoming and previous launches, normalizes them into one
   dataset, and renders `templates/index.html` into `site/` — once as `index.html` and once as
   `rocket-analytics-offline.html`, a self-contained single-file build with all resources inlined to work offline.
-- `static/` is copied to `site/static/`.
+- `static/` is copied to `site/static/`. In `index.html` the CSS and JS URLs carry a `?v=<content hash>` query, so a
+  deploy can't pair new HTML with a stale cached script (GitHub Pages caches assets for 10 minutes).
 - The GitHub Actions workflow in `.github/workflows/deploy.yml` rebuilds and deploys the site in a single job on every
   push to `master`, every 6 hours on a schedule, and on manual dispatch.
 - The workflow runs `main.py --max-cache-age 5` and persists `launch-cache.json` and `image-cache/` between runs via
   `actions/cache` (one `data-cache-` entry), so push-triggered rebuilds within 5 hours of the last fetch skip the API
   entirely while the 6-hourly schedule always refreshes.
+- After the build, CI runs both test suites (`python -m unittest discover tests` and `node --test`); a failure stops
+  the deploy before the artifact uploads.
 - Workflow runs share a `pages` concurrency group: pushes cancel any in-progress run so the newest commit deploys
   promptly, while scheduled and manual runs queue instead.
 
@@ -52,13 +57,15 @@ offline build is skipped if a static file is missing.
 The pipeline is one module per step; data flows roughly like this:
 
 ```
-LL2 API ──fetch──> launch dicts ──normalize──> one dataset (data JSON)
+LL2 API ──fetch──> launch dicts ──normalize──> one dataset
                       │                             │
                       └──> launch-cache.json        └──> Jinja page shell
                                                               │
                                             templates/index.html + static/
                                                               │
-                                        site/index.html + offline bundle
+                            site/index.html (`data` JSON; update text
+                            split out into launch-updates.js, loaded
+                            lazily) + offline bundle (updates inline)
                                                               │
                             stats.js/tables.js/charts.js derive everything
                             in the browser from that one `data` block
@@ -82,21 +89,22 @@ charts — happens in JavaScript from that single block; Jinja only renders the 
 - `pipeline/dataset.py` — normalizes the launches into the single dataset the site ships: launch records referencing
   entity tables by id and interned image URLs by index, with null/empty fields dropped.
 - `pipeline/build.py` — renders `templates/index.html` into `site/` with the dataset as the one `data` JSON block,
+  writes the lazily loaded `site/launch-updates.js` companion script, versions the CSS/JS URLs with content hashes,
   and hands off to the offline build.
 - `pipeline/offline_bundle.py` — the offline single-file build: downloads and downscales mission patch / rocket images
   into data URIs inside the dataset's `images` table, strips remote URLs, and re-renders the template with
   everything inlined.
 - `templates/index.html` — the site's markup as one minimal Jinja shell: head, header, `#workspace`, footer, the
   `data` JSON block, and the script tags. All view markup is built in JavaScript.
-- `static/` — the stylesheet, the page's JavaScript (`app.js` for the dataset parse, detail modals, and shared
-  helpers; `stats.js` computes the chart aggregations in the browser — per-year launch counts by rocket, rocket
-  family, manufacturer, country, and launch site, split into orbital, suborbital, and failed segments, with site
-  and family rows keeping a nested per-rocket tally so the rocket filter and variant stacking can re-slice them;
-  `tables.js` for the table views and their CSV export; the chart code split across `chart-factories.js` for
-  Chart.js factories, `chart-defs.js` for the chart registry, and `charts.js` for the per-pane filter controls;
-  and `workspace.js` for the two-pane workspace — view pickers, divider drag, maximize, PNG/CSV export, and
-  URL/localStorage persistence), and a vendored Chart.js — copied into `site/` verbatim and inlined for the
-  offline build.
+- `static/` — the stylesheet, the page's JavaScript (`app.js` for the dataset parse, detail modals — whose update
+  text loads lazily from `launch-updates.js` online — and shared helpers; `stats.js` computes the chart aggregations
+  in the browser — per-year launch counts by rocket, rocket family, manufacturer, country, and launch site, split
+  into orbital, suborbital, and failed segments, with site and family rows keeping a nested per-rocket tally so the
+  rocket filter and variant stacking can re-slice them; `tables.js` for the table views and their CSV export; the
+  chart code split across `chart-factories.js` for Chart.js factories, `chart-defs.js` for the chart registry, and
+  `charts.js` for the per-pane filter controls; and `workspace.js` for the two-pane workspace — view pickers,
+  divider drag, maximize, PNG/CSV export, and URL/localStorage persistence), and a vendored Chart.js — copied into
+  `site/` verbatim and inlined for the offline build.
 - `api-examples/` — sample API responses. Open these to see the raw shape of a launch record before `dataset.py`
   normalizes it.
 

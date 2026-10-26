@@ -168,3 +168,26 @@ def build_dataset(upcoming, previous, data_updated):
         "programs": programs,
         "authors": authors,
     })
+
+
+def split_updates(dataset):
+    """Split launch update text out of the dataset -> (core, updates).
+
+    Updates are the bulk of the payload yet only the modal's Updates tab
+    reads them, so the online build ships them as a lazily loaded
+    companion script; the offline build keeps the full dataset inline.
+    `updates` holds index-aligned lists — entry i belongs to
+    upcoming[i]/previous[i] — and `authors` stays in core. The input is
+    not mutated (meta is copied too, so callers can annotate it)."""
+    updates = {}
+    core = dict(dataset)
+    core["meta"] = dict(dataset["meta"])
+    for group in ("upcoming", "previous"):
+        launches = []
+        updates[group] = []
+        for launch in dataset[group]:
+            launch = dict(launch)
+            updates[group].append(launch.pop("updates", []))
+            launches.append(launch)
+        core[group] = launches
+    return core, updates

@@ -8,6 +8,13 @@
   <style>{{ inline_css | safe }}</style>
   {% else %}
   <link rel="stylesheet" href="{{ css_href }}">
+  {# Online scripts go in <head> with defer: the preload scanner finds
+     them immediately and downloads them while the large data block
+     streams. defer preserves order and runs after parsing, so app.js
+     still sees the DOM and the data block below. #}
+  {% for src in js_srcs %}
+  <script defer src="{{ src }}"></script>
+  {% endfor %}
   {% endif %}
 </head>
 <body>
@@ -41,14 +48,11 @@
      shipped twice. Everything on the page derives from this one block. #}
   <script type="application/json" id="data">{{ data | tojson }}</script>
 
-  {# Scripts run at the end of body so the DOM — including the data
-     block above — is fully parsed when app.js executes. #}
+  {# The offline build inlines all JS here at the end of body — defer
+     has no effect on inline scripts, so they must come after the data
+     block they read. #}
   {% if inline_js %}
   <script>{{ inline_js | safe }}</script>
-  {% else %}
-  {% for src in js_srcs %}
-  <script src="{{ src }}"></script>
-  {% endfor %}
   {% endif %}
 </body>
 </html>

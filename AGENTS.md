@@ -45,15 +45,21 @@
 - `static/*.js` are classic scripts, not modules, loaded in `JS_FILES`
   order from `pipeline/config.py`. A new file must be added there. They
   share one global scope, so two files declaring the same top-level
-  `const` crash the page at load — `node --check` won't catch it, only
-  loading the page will.
-- Scripts must render at the END of `<body>`: app.js reads the `data`
-  JSON block at parse time, so a `<script src>` in `<head>` crashes on
-  a null element. This applies to both the linked and inlined variants.
+  `const` crash the page at load — `node --check` per file won't catch
+  it, so `tests/scripts.test.js` compiles the concatenated bundle.
+- Online scripts load with `defer` in `<head>`: they download while the
+  large data block streams and still run after parsing. The offline
+  build's inline scripts must stay at the END of `<body>` — defer has
+  no effect on inline scripts, and they must run after the `data` block
+  they read.
 - Image fields are indices into `DATA.images`; resolve them with
   `imgSrc(i)`. Offline, unembedded slots are `null`, so skip nulls
   wherever an image is consumed — and since index 0 is a real image,
   test the resolved value, never the index.
+- Launch update text loads lazily online via `site/launch-updates.js`
+  (URL in `DATA.meta.updates_src`); `renderUpdates` in app.js must
+  handle the not-yet-loaded state (loading → filled/error). The offline
+  build has no `updates_src` and keeps updates inline.
 
 ## Verifying changes
 
@@ -64,7 +70,8 @@
 - `site/` is generated output and gitignored — never commit it.
 - `node --check` each edited `static/*.js` file. Run
   `python -m unittest discover tests` and `node --test` (the latter
-  needs a prior build for `site/index.html`).
+  needs a prior build for `site/index.html`) — CI runs both suites
+  after the build, so a failure stops the deploy.
 - After touching the offline build, check the `images` list in the
   `data` block of `site/rocket-analytics-offline.html`: embedded entries
   are `data:` URIs and the rest are `null`.

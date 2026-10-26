@@ -6,13 +6,14 @@ in the transform layer fails loudly instead of shipping a dataset the front end 
 render. Run from the repo root with: python -m unittest discover tests
 """
 
+import copy
 import json
 import unittest
 from pathlib import Path
 from unittest import mock
 
 from pipeline.config import PAGE_SIZE, PAST_LAUNCH_PAGES
-from pipeline.dataset import build_dataset
+from pipeline.dataset import build_dataset, split_updates
 from pipeline.offline_bundle import offline_dataset
 
 CACHE = Path(__file__).resolve().parents[1] / "launch-cache.json"
@@ -131,6 +132,25 @@ class DatasetTest(unittest.TestCase):
     def test_truncated_flag_follows_page_cap(self):
         self.assertEqual(self.data["meta"]["truncated"],
                          len(self.previous) >= PAST_LAUNCH_PAGES * PAGE_SIZE)
+
+    def test_split_updates(self):
+        # The input must survive intact — the offline build renders it
+        # with updates still inline.
+        snapshot = copy.deepcopy(self.data)
+        core, updates = split_updates(self.data)
+        self.assertEqual(self.data, snapshot)
+        for group in ("upcoming", "previous"):
+            self.assertEqual(len(updates[group]), len(core[group]))
+            self.assertTrue(all(isinstance(u, list) for u in updates[group]))
+            for launch in core[group]:
+                self.assertNotIn("updates", launch)
+        # Re-attaching the payload by index reproduces build_dataset's
+        # output exactly (empty lists were dropped by drop_empty).
+        for group in ("upcoming", "previous"):
+            for launch, u in zip(core[group], updates[group]):
+                if u:
+                    launch["updates"] = u
+        self.assertEqual(core, self.data)
 
 
 @unittest.skipUnless(CACHE.exists(), "requires launch-cache.json")
