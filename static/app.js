@@ -1,7 +1,8 @@
-// Rocket Analytics front end: launch/rocket tables and detail modals.
+// Rocket Analytics front end: detail modals and shared helpers.
 // Chart code lives in chart-factories.js, chart-defs.js, and
-// charts.js, which load after this file (JS_FILES in
-// pipeline/config.py) and share its top-level bindings.
+// charts.js, and the two-pane workspace shell in workspace.js — all
+// load after this file (JS_FILES in pipeline/config.py) and share its
+// top-level bindings.
 // All data is baked into the page by the build as JSON inside
 // <script type="application/json"> tags; parse it once up front.
 
@@ -214,33 +215,18 @@ function wireTabs(btnSel, paneSel, onSwitch) {
   return () => activate(btns[0]);
 }
 
-const filterInput = $('filter');
-const filterCount = $('filter-count');
-
-// One filter across all launch/rocket tables; the count reflects the
-// currently visible pane.
-function applyFilter() {
-  const q = filterInput.value.trim().toLowerCase();
-  document.querySelectorAll('.table-wrap tbody tr').forEach(tr => {
-    tr.hidden = q !== '' && !tr.textContent.toLowerCase().includes(q);
-  });
-  filterCount.textContent = q
-    ? `${document.querySelector('.table-wrap:not([hidden])')
-        .querySelectorAll('tbody tr:not([hidden])').length} matches`
-    : '';
-}
-filterInput.addEventListener('input', applyFilter);
-wireTabs('#launch-tabs .tab', '.table-wrap', applyFilter);
-
 // Sortable rocket columns: data-sort names a rocket entity key.
-// A new column starts descending; re-clicking flips direction.
+// A new column starts descending; re-clicking flips direction. The
+// current sort is recorded on the wrap's dataset so the workspace can
+// serialize and restore it; sortRockets is called from workspace.js
+// when a saved layout lands the table in a pane.
 const rocketTbody = document.querySelector('#tab-rockets tbody');
 const rocketSortThs = document.querySelectorAll('#tab-rockets th.sortable');
 let rocketSortKey = 'launches';
-rocketSortThs.forEach(th => th.addEventListener('click', () => {
-  const key = th.dataset.sort;
-  const dir = key === rocketSortKey && th.dataset.dir === 'desc'
-    ? 'asc' : 'desc';
+
+function sortRockets(key, dir) {
+  const th = [...rocketSortThs].find(t => t.dataset.sort === key);
+  if (!th) return;
   rocketSortKey = key;
   rocketSortThs.forEach(t => delete t.dataset.dir);
   th.dataset.dir = dir;
@@ -255,6 +241,16 @@ rocketSortThs.forEach(th => th.addEventListener('click', () => {
       return mul * (vb - va);
     })
     .forEach(r => rocketTbody.appendChild(r));
+  const wrap = $('tab-rockets');
+  wrap.dataset.sort = key;
+  wrap.dataset.dir = dir;
+}
+
+rocketSortThs.forEach(th => th.addEventListener('click', () => {
+  const key = th.dataset.sort;
+  const dir = key === rocketSortKey && th.dataset.dir === 'desc'
+    ? 'asc' : 'desc';
+  sortRockets(key, dir);
 }));
 
 const modal = $('modal');
@@ -332,5 +328,4 @@ document.querySelector('main').addEventListener('click', e => {
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
   [modal, rocketModal].forEach(closeModal);
-  closeChartModal();  // defined in charts.js, loaded after this file
 });

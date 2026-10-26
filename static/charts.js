@@ -1,10 +1,11 @@
-// Chart wiring: the filter controls, the inline chart box, and the
-// full-page explorer modal, all driven by CHART_DEFS in chart-defs.js.
-// A classic script, not a module, so file:// previews and the offline
-// build work — it shares app.js's top-level bindings ($, esc, STATS,
-// wireTabs, showModal, closeModal) plus the factories/views and defs
-// from the other chart files; load order is JS_FILES in
-// pipeline/config.py.
+// Chart filter controls and shared pane machinery: the per-pane filter
+// widgets (FILTER_BUILDERS keyed by the names in each def's `filters`
+// list), the chart pager, and the freshFilters state factory. The
+// workspace shell — panes, divider, persistence — lives in
+// workspace.js. A classic script, not a module, so file:// previews
+// and the offline build work — it shares app.js's top-level bindings
+// ($, esc, STATS) plus the factories and defs from the other chart
+// files; load order is JS_FILES in pipeline/config.py.
 // Segmented scope control over a `scopes` value list — 'all' labels as
 // 'All time', anything else is a year. Reports the choice via onChange;
 // hides itself when there's only one scope to pick.
@@ -52,7 +53,7 @@ function addPopSearch(pop) {
 }
 
 // Multi-select country picker with an Exclude toggle: a button opens a
-// checkbox list so a dozen-plus options don't crowd the slot header.
+// checkbox list so a dozen-plus options don't crowd the pane header.
 // The button summarizes the live selection ("Country: not USA, CHN" /
 // "Country: all but 5") and carries an accent while a filter is
 // applied. Mutates sel ({codes, negate}) in place, then fires onChange.
@@ -228,7 +229,9 @@ const makeToggle = (text, key) => (slot, reload) => {
 };
 
 // Filter builders keyed by the names in each def's `filters` list; each
-// returns a control that updates the slot's filter state on change.
+// returns a control that updates the pane's filter state on change.
+// (workspace.js adds 'q', the table search box.) `slot` is the pane
+// object — defId, filters, and refreshPager are the fields it reads.
 const FILTER_BUILDERS = {
   year: (slot, reload) => {
     // yearsOnly defs offer no 'all' scope (no lifetime dataset). A
@@ -261,7 +264,7 @@ const FILTER_BUILDERS = {
   // checkbox popover (reuses the country picker's styles), one line
   // per entity. filters.entities is a Set that can never empty — the
   // last checked box refuses to uncheck — since a trend with no series
-  // would render blank. Stale picks from a previous def in this slot
+  // would render blank. Stale picks from a previous def in this pane
   // are pruned, falling back to the def's defaultEntity.
   entity: (slot, reload) => {
     const def = CHART_DEFS[slot.defId];
@@ -337,11 +340,11 @@ const FILTER_BUILDERS = {
 // Some filters can't apply to the 'all' scope — e.g. a site's lifetime
 // totals have no rocket attribution — so defs list which non-year
 // filters remain via allScopeFilters; the rest hide while 'all' is
-// active. mountSlot tags each control with data-filter so this knows
+// active. mountPane tags each control with data-filter so this knows
 // which is which; the year seg itself always stays.
 function applyScopeFilters(slot) {
   const def = CHART_DEFS[slot.defId];
-  [...slot.filtersEl.children].forEach(el => {
+  [...slot.controlsEl.children].forEach(el => {
     el.hidden = slot.filters.year === 'all' &&
       !!def.allScopeFilters &&
       el.dataset.filter !== 'year' &&
@@ -351,7 +354,7 @@ function applyScopeFilters(slot) {
 
 // Wire ‹ [n] of N › controls to a chart; returns a refresh that also
 // hides the pager when the data fits on one page. getChart is a function
-// so the target can change (active tab, swapped chart def).
+// so the target can change (the pane's mounted chart instance).
 function attachPager(els, getChart) {
   const refresh = () => {
     const c = getChart(), n = c.pageCount();
@@ -382,257 +385,10 @@ function attachPager(els, getChart) {
   return refresh;
 }
 
-// Inline box: one tab and pane per `inline` def, generated here so adding
-// an inline chart is only a registry entry. Scope control and pager are
-// shared across tabs.
-const chartPanes = $('chart-panes');
-const charts = {};  // pane id -> {id, def, inst}
-for (const [id, def] of Object.entries(CHART_DEFS)) {
-  if (!def.inline) continue;
-  const pane = document.createElement('div');
-  pane.className = 'chart-pane';
-  pane.id = `chart-${id}`;
-  pane.hidden = true;
-  pane.innerHTML = '<canvas></canvas>';
-  chartPanes.append(pane);
-  const inst = def.mount(pane);
-  inst.setData(def.data({year: 'all'}));
-  charts[pane.id] = {id, def, inst};
-  const tab = document.createElement('button');
-  tab.className = 'tab';
-  tab.dataset.pane = pane.id;
-  tab.textContent = def.label;
-  $('chart-tabs').insertBefore(tab, $('chart-pager'));
-}
-chartPanes.firstElementChild.hidden = false;
-$('chart-tabs').firstElementChild.classList.add('active');
-
-const activeChart = () => charts[
-  document.querySelector('#chart-tabs .tab.active').dataset.pane].inst;
-
-const refreshPager = attachPager({
-  wrap: $('chart-pager'), prev: $('pager-prev'), next: $('pager-next'),
-  select: $('pager-select'), total: $('pager-total')}, activeChart);
-
-// Charts mount while their pane is hidden (0x0), so resize on tab switch.
-wireTabs('#chart-tabs .tab', '#chart-panes .chart-pane',
-  () => { activeChart().chart.resize(); refreshPager(); });
-
-// The inline scope control swaps every tab's dataset at once.
-let inlineScope = 'all';
-$('chart-scope').append(makeScopeSeg('all', year => {
-  inlineScope = year;
-  for (const pane in charts)
-    charts[pane].inst.setData(charts[pane].def.data({year}));
-  refreshPager();
-}, ALL_SCOPES));
-refreshPager();
-
-// Chart explorer modal: one or two independent slots, each with its own
-// chart picker, filters, and pager. Slots are built on open and torn down
-// on close; each chart needs a resize() once the modal becomes visible.
-const chartModal = $('chart-modal');
-const slotsEl = $('chart-slots');
-const splitBtn = $('split-btn');
-let slots = [];
-
-// A slot's filter state: year scope, the country picker's
+// A pane's chart filter state: year scope, the country picker's
 // {codes, negate} selection, the boolean toggles, and two Sets — the
 // trend entity multi-pick and the site charts' rocket filter.
-// cloneFilters deep-copies the Sets so a split slot's toggles don't
-// write into its sibling's state.
 const freshFilters = year => ({year,
   country: {codes: new Set(), negate: false}, successOnly: false,
   cumulative: false, variantStack: false, entities: new Set(),
   rockets: new Set()});
-const cloneFilters = f => ({...f,
-  country: {codes: new Set(f.country.codes), negate: f.country.negate},
-  entities: new Set(f.entities), rockets: new Set(f.rockets)});
-
-function slotPager(slot) {
-  const wrap = slot.el.querySelector('.pager');
-  const [prev, next] = wrap.querySelectorAll('.seg-btn');
-  return attachPager({
-    wrap, prev, next,
-    select: wrap.querySelector('.pager-select'),
-    total: wrap.querySelector('.pager-total')}, () => slot.inst);
-}
-
-// Re-read the slot's dataset from its current def + filters.
-function reloadSlot(slot) {
-  const def = CHART_DEFS[slot.defId];
-  slot.inst.setData(def.data(slot.filters));
-  slot.refreshPager();
-  syncAxes();
-}
-
-// (Re)build a slot for its current def: fresh chart instance plus that
-// def's filter controls. The pane is reset to a bare canvas first —
-// defs like the donut replace the pane's contents with their own
-// layout, so a leftover canvas/table would linger otherwise. Controls
-// are built before data() runs so they can seed filter defaults (e.g.
-// the entity picker's default selection).
-function mountSlot(slot) {
-  const def = CHART_DEFS[slot.defId];
-  slot.inst?.chart.destroy();
-  slot.pane.innerHTML = '<canvas></canvas>';
-  slot.pane.classList.remove('donut-pane');
-  slot.inst = def.mount(slot.pane);
-  slot.filtersEl.replaceChildren(
-    ...def.filters.map(f => {
-      const ctrl = FILTER_BUILDERS[f](slot, () => reloadSlot(slot));
-      ctrl.dataset.filter = f;
-      return ctrl;
-    }));
-  applyScopeFilters(slot);
-  slot.inst.setData(def.data(slot.filters));
-  slot.refreshPager();
-  syncAxes();
-}
-
-function layoutSlots() {
-  slotsEl.classList.toggle('split', slots.length > 1);
-  splitBtn.hidden = slots.length > 1;
-  // The last remaining chart can't be removed.
-  slots.forEach(s => {
-    s.el.querySelector('.slot-close').hidden = slots.length === 1;
-  });
-}
-
-// Force both slots onto the same y-axis when they chart the same unit, so
-// bar heights compare honestly. The bound comes from each slot's full
-// dataset, not just the visible page. It's a suggestedMax, not max:
-// Chart.js still rounds the axis top up to a nice number (a hard max of
-// e.g. 637 produced ugly ticks) while never dropping below it.
-function syncAxes() {
-  const units = slots.map(s => CHART_DEFS[s.defId].unit);
-  const shared = slots.length === 2 && units[0] && units[0] === units[1];
-  // Defs whose data rows aren't {label: count} (multi-series trends)
-  // provide rowMax to say what one row contributes to the bound.
-  const max = shared
-    ? Math.max(0, ...slots.flatMap(s => {
-        const def = CHART_DEFS[s.defId];
-        const bound = def.rowMax ?? rowTotal;
-        return Object.values(def.data(s.filters)).map(bound);
-      }))
-    : 0;
-  slots.forEach(s => {
-    // Non-cartesian charts (the donuts) have no scales.y to sync.
-    const y = s.inst.chart.options.scales?.y;
-    if (y) y.suggestedMax = max || undefined;
-    s.inst.chart.update();
-  });
-}
-
-function addSlot(defId, filters) {
-  if (slots.length >= 2) return;
-  const el = document.createElement('div');
-  el.className = 'chart-slot';
-  el.innerHTML = `
-    <div class="chart-slot-head">
-      <span class="slot-kind"></span>
-      <select class="chart-pick" aria-label="Chart"></select>
-      <div class="slot-filters"></div>
-      <button class="slot-export" type="button" aria-label="Download chart as PNG" title="Download as PNG">↓</button>
-      <button class="slot-close" type="button" aria-label="Remove chart">&times;</button>
-    </div>
-    <div class="chart-pane"><canvas></canvas></div>
-    <div class="seg pager" hidden>
-      <button class="seg-btn" type="button" aria-label="Previous page">‹</button>
-      <select class="pager-select" aria-label="Page"></select>
-      <span class="pager-total"></span>
-      <button class="seg-btn" type="button" aria-label="Next page">›</button>
-    </div>`;
-  const slot = {
-    el,
-    pane: el.querySelector('.chart-pane'),
-    filtersEl: el.querySelector('.slot-filters'),
-    defId,
-    filters,
-    inst: null,
-  };
-  const select = el.querySelector('.chart-pick');
-  // Options sit under an optgroup per chart kind, so the option text
-  // only needs the def's subject label (the inline tabs use it alone).
-  const kinds = [...new Set(Object.values(CHART_DEFS).map(d => d.kind))];
-  select.innerHTML = kinds.map(kind =>
-    `<optgroup label="${esc(kind)}">${Object.entries(CHART_DEFS)
-      .filter(([, d]) => d.kind === kind)
-      .map(([id, d]) => `<option value="${id}">${esc(d.label)}</option>`)
-      .join('')}</optgroup>`).join('');
-  select.value = defId;
-  // The select only displays the subject label, so the kind tag beside
-  // it tells e.g. a Bars slot from a Donut slot at the same subject.
-  const kindTag = el.querySelector('.slot-kind');
-  const syncKind = () => {
-    kindTag.textContent = CHART_DEFS[slot.defId].kind;
-  };
-  select.addEventListener('change', () => {
-    slot.defId = select.value;
-    syncKind();
-    mountSlot(slot);
-  });
-  syncKind();
-  el.querySelector('.slot-close')
-    .addEventListener('click', () => removeSlot(slot));
-  el.querySelector('.slot-export')
-    .addEventListener('click', () => exportPng(slot));
-  slot.refreshPager = slotPager(slot);
-  slotsEl.append(el);
-  slots.push(slot);
-  mountSlot(slot);
-  layoutSlots();
-}
-
-// Download the slot's chart as a PNG. Chart.js draws on a transparent
-// canvas, so the frame is composited over the slot's surface color —
-// otherwise the image reads badly on light backgrounds.
-function exportPng(slot) {
-  const src = slot.inst.chart.canvas;
-  const out = document.createElement('canvas');
-  out.width = src.width;
-  out.height = src.height;
-  const ctx = out.getContext('2d');
-  const bg = getComputedStyle(slot.el).backgroundColor;
-  ctx.fillStyle = bg === 'rgba(0, 0, 0, 0)'
-    ? getComputedStyle(document.body).backgroundColor : bg;
-  ctx.fillRect(0, 0, out.width, out.height);
-  ctx.drawImage(src, 0, 0);
-  const a = document.createElement('a');
-  a.download = `${slot.defId}.png`;
-  a.href = out.toDataURL('image/png');
-  a.click();
-}
-
-function removeSlot(slot) {
-  slot.inst?.chart.destroy();
-  slot.el.remove();
-  slots = slots.filter(s => s !== slot);
-  layoutSlots();
-  syncAxes();
-}
-
-function openChartModal() {
-  const pane = document.querySelector('#chart-tabs .tab.active').dataset.pane;
-  // Seed the slot with what the inline box is currently showing.
-  addSlot(charts[pane].id, freshFilters(inlineScope));
-  showModal(chartModal);
-  slots.forEach(s => s.inst.chart.resize());
-}
-
-function closeChartModal() {
-  slots.forEach(s => s.inst?.chart.destroy());
-  slots = [];
-  slotsEl.replaceChildren();
-  layoutSlots();  // drop .split and restore the Split view button
-  closeModal(chartModal);
-}
-
-$('all-charts-btn').addEventListener('click', openChartModal);
-// Split view duplicates the current chart — the same def at a different
-// scope is the common comparison.
-splitBtn.addEventListener('click', () => addSlot(slots[0].defId, cloneFilters(slots[0].filters)));
-chartModal.querySelector('.modal-close')
-  .addEventListener('click', closeChartModal);
-chartModal.addEventListener('click',
-  e => { if (e.target === chartModal) closeChartModal(); });

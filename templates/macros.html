@@ -1,5 +1,5 @@
-{% macro launch_table(set_name, launches, note, with_status=false, hidden=false) -%}
-<div class="table-wrap" id="tab-{{ set_name }}"{% if hidden %} hidden{% endif %}>
+{% macro launch_table(set_name, launches, note, with_status=false) -%}
+<div class="table-wrap" id="tab-{{ set_name }}">
   <table>
     <thead>
       <tr>
@@ -27,8 +27,8 @@
   <p class="table-note">{{ note }}</p>
 </div>
 {%- endmacro %}
-{% macro rocket_table(rows, note, hidden=false) -%}
-<div class="table-wrap" id="tab-rockets"{% if hidden %} hidden{% endif %}>
+{% macro rocket_table(rows, note) -%}
+<div class="table-wrap" id="tab-rockets">
   <table>
     <thead>
       <tr>

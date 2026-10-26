@@ -13,6 +13,7 @@ pip install -r requirements.txt
 python main.py                    # builds into site/
 python main.py --refresh          # ignore the API response cache
 python main.py --max-cache-age 5  # refetch if the cache is over 5 hours old
+python -m unittest discover tests # run the unit tests
 ```
 
 Fetched launch data is cached in `launch-cache.json` (git ignored) and reused regardless of age unless `--refresh` or
@@ -78,9 +79,10 @@ LL2 API ──fetch──> launch dicts ──curate──> details + entities +
   into data URIs, strips other remote URLs, and re-renders the template with everything inlined.
 - `templates/index.html` — the site's markup as one Jinja template; all charts and tables are driven by the context
   dict built in `build.py`. Reusable table and modal markup lives in `templates/macros.html`, imported at the top.
-- `static/` — the stylesheet, the page's JavaScript (`app.js` for tables, filter, and detail modals; the chart code
-  split across `chart-factories.js` for Chart.js factories, `chart-defs.js` for the chart registry, and `charts.js`
-  for the wiring — the filter controls, inline chart box, and explorer modal), and a vendored Chart.js — copied into
+- `static/` — the stylesheet, the page's JavaScript (`app.js` for detail modals and table row clicks; the chart code
+  split across `chart-factories.js` for Chart.js factories, `chart-defs.js` for the chart registry, `charts.js`
+  for the per-pane filter controls, and `workspace.js` for the two-pane workspace — view pickers, divider drag,
+  maximize, PNG/CSV export, and URL/localStorage persistence), and a vendored Chart.js — copied into
   `site/` verbatim and inlined for the offline build.
 - `api-examples/` — sample API responses. Open these to see the raw shape of a launch record before it's curated by
   `details.py`.

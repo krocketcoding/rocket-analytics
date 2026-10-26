@@ -38,15 +38,26 @@
 
 ## Front end
 
-- Page behavior is split across `static/app.js` (tables, filter, detail
-  modals) and three chart files: `static/chart-factories.js` (the
-  Chart.js factories and view contracts), `static/chart-defs.js` (the
-  CHART_DEFS registry and its data-slicing helpers), and
-  `static/charts.js` (filter controls, inline chart box, explorer
-  modal). All are classic scripts — not modules — sharing top-level
-  bindings, loaded in `JS_FILES` order from `pipeline/config.py` with
-  charts.js last. `templates/index.html` is markup, and shared Jinja
-  macros (e.g. `modal()`) live in `templates/macros.html`.
+- The site is one workspace of two panes, each showing any view — a
+  chart or a table — with a draggable divider (fixed even stack on
+  mobile) and a per-pane maximize/restore button. Pane state (views,
+  filters, split ratio, focus) serializes to the URL hash and
+  localStorage.
+- Page behavior is split across `static/app.js` (detail modals, table
+  row clicks, rocket-table sorting) and the chart/workspace files:
+  `static/chart-factories.js` (the Chart.js factories and view
+  contracts), `static/chart-defs.js` (the CHART_DEFS registry and its
+  data-slicing helpers), `static/charts.js` (the per-pane filter
+  controls and pager), and `static/workspace.js` (pane skeleton, view
+  pickers, tables-as-views, divider, maximize, CSV/PNG export, URL +
+  localStorage persistence). All are classic scripts — not modules —
+  sharing top-level bindings, loaded in `JS_FILES` order from
+  `pipeline/config.py` with workspace.js last.
+- Tables are server-rendered into hidden `#table-staging` and relocated
+  into a pane on mount — a table view exists once, so it's disabled in
+  the other pane's picker. Charts mount per pane from CHART_DEFS.
+- `templates/index.html` is markup, and shared Jinja macros (e.g.
+  `modal()`) live in `templates/macros.html`.
 - Scripts must render at the END of `<body>`: app.js reads the `data-*`
   JSON blocks at parse time, so a `<script src>` in `<head>` crashes on
   a null element. This applies to both the linked and inlined variants.
@@ -62,7 +73,8 @@
   repeatedly; `--refresh` forces a fresh fetch.
 - `site/` is generated output and gitignored — never commit it.
 - `node --check` each edited `static/*.js` file after front-end edits
-  (`charts.js`, `chart-defs.js`, `chart-factories.js`, `app.js`).
+  (`workspace.js`, `charts.js`, `chart-defs.js`, `chart-factories.js`,
+  `app.js`).
 - After touching the offline build, sanity-check `data-images` in
   `site/rocket-analytics-offline.html` (it's `{}` in `index.html`).
 - `image-cache/` caches processed images by content of

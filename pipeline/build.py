@@ -18,15 +18,9 @@ OFFLINE_HREF = OFFLINE_FILE.name
 
 def build_context(upcoming, previous, entities, data_updated):
     """Assemble the Jinja template context from launches and entities."""
-    # Suborbital launches have no orbital attempt counts; use the latest
-    # orbital launch for the orbital stat cards.
-    latest = next((launch for launch in previous if launch.get("orbital_launch_attempt_count") is not None), {})
     return dict(
         upcoming=upcoming,
         previous=previous,
-        orbital_total=latest.get("orbital_launch_attempt_count"),
-        orbital_year=latest.get("orbital_launch_attempt_count_year"),
-        orbital_year_label=(latest.get("net") or "")[:4],
         upcoming_detail=[launch_detail(launch) for launch in upcoming],
         previous_detail=[launch_detail(launch) for launch in previous],
         entities=entities,

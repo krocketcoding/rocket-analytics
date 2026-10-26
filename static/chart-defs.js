@@ -98,30 +98,27 @@ const familyRows = (rows, byVariant) => Object.fromEntries(
     return [fam, out];
   }));
 
-// Registry of every chart the UI can show. `inline` charts also get a tab
-// in the main-page box; the rest appear only in the explorer modal's
-// pickers. `kind` groups the picker's options under an optgroup heading.
-// Each def lists the filters it supports (each name renders a
-// control in the modal slot — the inline box only ever shows 'year'),
-// maps a filter-state object {year, country, successOnly, cumulative,
-// variantStack, entities} to its dataset, and mounts a chart object inside a
-// .chart-pane — the pager shows only when the instance's pageCount()
+// Registry of every chart a pane can show — workspace.js merges in the
+// table views to build the pickers. `kind` groups the picker's options
+// under an optgroup heading. Each def lists the filters it supports
+// (each name renders a control in the pane header), maps a filter-state
+// object {year, country, successOnly, cumulative, variantStack,
+// entities, rockets} to its dataset, and mounts a chart object inside
+// a .chart-pane — the pager shows only when the instance's pageCount()
 // exceeds 1. Optional def fields: `allScopeFilters` lists which
 // non-year filters stay visible in the 'all' scope (site lifetime
 // totals can't be split by rocket or success, so site defs pass []),
 // `yearsOnly` drops the 'all' scope entirely (defs without a lifetime
 // dataset), `countryMap` picks the label->code map the country filter
-// lists, and
-// `rowMax` overrides rowTotal when a def's data rows need a different
-// syncAxes bound. Defs can also provide `entities` — [value, label]
-// pairs feeding the 'entity' popover (trends) or the 'rocket' filter
-// (site charts) — and `defaultEntity`, the trend picker's most-
-// launched fallback.
+// lists, and `rowMax` overrides rowTotal when a def's data rows need a
+// different syncAxes bound. Defs can also provide `entities` —
+// [value, label] pairs feeding the 'entity' popover (trends) or the
+// 'rocket' filter (site charts) — and `defaultEntity`, the trend
+// picker's most-launched fallback.
 const CHART_DEFS = {
   'by-rocket': {
     label: 'By rocket',
     kind: 'Bars',
-    inline: true,
     filters: ['year', 'country'],
     countryMap: ROCKET_COUNTRIES,
     unit: 'launches',
@@ -142,7 +139,6 @@ const CHART_DEFS = {
   'by-manufacturer': {
     label: 'By manufacturer',
     kind: 'Bars',
-    inline: true,
     filters: ['year', 'country'],
     countryMap: MFR_COUNTRIES,
     unit: 'launches',
@@ -154,7 +150,6 @@ const CHART_DEFS = {
   'by-country': {
     label: 'By country',
     kind: 'Bars',
-    inline: true,
     filters: ['year'],
     unit: 'launches',
     data: s => scopedData('by_country', 'countries')(s.year),

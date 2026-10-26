@@ -18,48 +18,78 @@
   box-sizing: border-box;
 }
 
+/* Dark thin scrollbars everywhere — table wraps, popovers, modals. */
+* {
+  scrollbar-color: var(--scroll-thumb) transparent;
+  scrollbar-width: thin;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 body {
   background: var(--bg);
   color: var(--text);
+  display: flex;
+  flex-direction: column;
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  /* Exactly the viewport — never taller. Tables scroll inside their
+     pane instead of growing the page. */
+  height: 100dvh;
   line-height: 1.5;
+  overflow: hidden;
 }
 
 /* Header and footer */
 
+/* Compact bar — the workspace owns the screen, so the header is just
+   the title and the header-level buttons. */
 header {
-  text-align: center;
-  padding: 3rem 1rem 2rem;
-  background: linear-gradient(180deg, var(--surface) 0%, var(--bg) 100%);
-  position: relative;
-}
-
-.download-btn {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--dim);
-  font-size: 0.8rem;
-  padding: 0.3rem 0.7rem;
-  position: absolute;
-  right: 1rem;
-  text-decoration: none;
-  top: 1rem;
-}
-
-.download-btn:hover {
-  border-color: var(--muted);
-  color: var(--text);
+  align-items: center;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  padding: 0.45rem 1rem;
 }
 
 header h1 {
-  font-size: 2.5rem;
+  font-size: 1.05rem;
   letter-spacing: 0.05em;
 }
 
-.header-note {
+.header-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.hdr-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
   color: var(--dim);
-  font-size: 0.85rem;
-  margin-top: 0.5rem;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.8rem;
+  padding: 0.3rem 0.7rem;
+  text-decoration: none;
+}
+
+.hdr-btn:hover {
+  border-color: var(--muted);
+  color: var(--text);
 }
 
 .footer-note {
@@ -73,101 +103,130 @@ header h1 {
   color: var(--accent);
 }
 
-/* Layout */
+/* Layout: main is a column flex so the workspace fills the viewport
+   between the header bar and the footer — panes scroll internally
+   instead of the page scrolling through tables. */
 
 main {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 1.5rem 1rem 3rem;
-}
-
-section h2 {
-  margin-bottom: 1rem;
-  font-size: 1.25rem;
-}
-
-/* Stat cards */
-
-.cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-  margin-bottom: 2rem;
-}
-
-.card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1.25rem;
   display: flex;
+  flex: 1;
   flex-direction: column;
-  gap: 0.25rem;
+  min-height: 0;
+  padding: 0.75rem 1rem;
 }
 
-.card-value {
-  font-size: 1.6rem;
-  font-weight: 700;
-  color: var(--accent);
+/* Workspace: two panes split by a draggable divider */
+
+#workspace {
+  display: flex;
+  flex: 1;
+  min-height: 0;
 }
 
-.card-label {
-  color: var(--muted);
-  font-size: 0.9rem;
+/* Panes share the space by flex-grow ratio — workspace.js writes
+   inline flex values from the divider position, and clears them on
+   narrow screens where the stacked split is fixed at even halves.
+   Panes are flat against the page background — no card chrome; the
+   divider and the controls carry the separation. */
+.pane {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  padding: 0.75rem;
 }
 
-/* Charts */
-
-.charts {
-  margin-bottom: 2rem;
+/* display:flex above would otherwise beat the UA [hidden] rule and
+   keep a "hidden" pane visible while the other is maximized. */
+.pane[hidden] {
+  display: none;
 }
 
-.chart-box {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1.25rem;
-}
-
-.chart-pane {
-  height: 340px;
+/* The divider doubles as the gap between panes: a faint full-height
+   track (::before) under a bordered grip handle (::after) — a raised
+   pill with ridge lines so the drag affordance reads at a glance. */
+.divider {
+  cursor: col-resize;
+  flex: 0 0 14px;
   position: relative;
 }
 
-.chart-head {
+.divider::before {
+  background: var(--border);
+  bottom: 0;
+  content: '';
+  left: 50%;
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  width: 1px;
+}
+
+/* Grip ridges are three vertical lines drawn with a repeating
+   gradient inside the padded pill. */
+.divider::after {
+  background:
+    repeating-linear-gradient(90deg,
+      var(--dim) 0 2px, transparent 2px 6px)
+    center / 16px 24px no-repeat,
+    var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  content: '';
+  height: 64px;
+  left: 50%;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 24px;
+}
+
+.divider:hover::after,
+.divider:active::after {
+  background:
+    repeating-linear-gradient(90deg,
+      var(--accent-strong) 0 2px, transparent 2px 6px)
+    center / 16px 24px no-repeat,
+    var(--surface-active);
+  border-color: var(--accent-strong);
+}
+
+.pane-head {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
-  justify-content: space-between;
-  margin-bottom: 1rem;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
 }
 
-.chart-head h2 {
+.pane-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Chart canvases stretch to fill the pane body */
+.pane-body .chart-pane {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+  position: relative;
+}
+
+/* Tables scroll inside the pane; the sticky thead tracks the wrap's
+   own scroll container. */
+.pane-body > .table-wrap {
+  flex: 1;
   margin-bottom: 0;
+  min-height: 0;
+  overflow: auto;
 }
 
-/* Primary accent CTA: All charts launcher, Split view button */
-.btn-accent {
-  background: var(--accent-strong);
-  border: none;
-  border-radius: 8px;
-  color: #fff;
-  cursor: pointer;
-  font-size: 1rem;
-  font-weight: 600;
-  padding: 0.65rem 1.75rem;
-}
-
-.btn-accent:hover {
-  background: var(--accent);
-  color: var(--bg);
-}
-
-/* Centered launcher under the chart box: opens the explorer modal */
-.all-charts-btn {
-  display: block;
-  margin: 1rem auto 0;
+.pane > .pager {
+  margin-top: 0.75rem;
 }
 
 .seg {
@@ -237,14 +296,8 @@ section h2 {
   padding-right: 0.5rem;
 }
 
-/* Tabs and filter */
-
-.tabs {
-  align-items: center;
-  display: flex;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-}
+/* Tab buttons — used by the detail modals (the workspace's own tabs
+   are gone; panes pick views from a dropdown instead). */
 
 .tab {
   background: var(--surface);
@@ -266,41 +319,76 @@ section h2 {
   color: var(--text);
 }
 
-.tab-hint {
-  color: var(--dim);
-  font-size: 0.8rem;
-  margin-left: 0.25rem;
+/* Pane-head controls */
+
+/* Kind tag beside the view picker: the select's visible value is only
+   the subject label, so two same-subject panes of different kinds
+   would read identically without it. */
+.pane-kind {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 0.15rem 0.45rem;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
-.filter {
+/* Per-view controls (year seg, country picker, table search…) sit in
+   a row inside the pane head and wrap under each other on narrow
+   panes. */
+.pane-controls {
   align-items: center;
   display: flex;
-  margin-left: auto;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
-.filter input {
-  background: var(--surface);
+/* applyScopeFilters hides controls via the hidden attr, but controls
+   with their own display rule (e.g. .success-toggle) would defeat it. */
+.pane-controls > [hidden] {
+  display: none;
+}
+
+/* Table pane filter box — --bg reads as inset against the pane's
+   --surface. */
+.pane-filter {
+  align-items: center;
+  display: flex;
+  gap: 0.6rem;
+}
+
+.pane-filter input {
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
   color: var(--text);
   font-size: 0.9rem;
   padding: 0.4rem 0.9rem;
-  width: min(240px, 40vw);
+  width: min(220px, 32vw);
 }
 
-.filter input:focus {
+.pane-filter input:focus {
   border-color: var(--accent-strong);
   outline: none;
 }
 
-.filter input::placeholder {
+.pane-filter input::placeholder {
   color: var(--dim);
 }
 
-#filter-count {
+.pane-filter-count {
   color: var(--muted);
   font-size: 0.85rem;
-  margin-left: 0.75rem;
+  white-space: nowrap;
+}
+
+.pane-hint {
+  color: var(--dim);
+  font-size: 0.8rem;
+  white-space: nowrap;
 }
 
 /* Tables */
@@ -412,22 +500,7 @@ tbody tr:hover {
   overflow-y: auto;
   padding: 1.5rem;
   position: relative;
-  scrollbar-color: var(--scroll-thumb) transparent;
-  scrollbar-width: thin;
   width: 100%;
-}
-
-.modal-card::-webkit-scrollbar {
-  width: 8px;
-}
-
-.modal-card::-webkit-scrollbar-thumb {
-  background: var(--scroll-thumb);
-  border-radius: 4px;
-}
-
-.modal-card::-webkit-scrollbar-track {
-  background: transparent;
 }
 
 .modal-close {
@@ -447,57 +520,6 @@ tbody tr:hover {
   color: var(--text);
 }
 
-/* Chart explorer modal: fills the viewport, slots laid out by app.js */
-
-.modal-card.modal-full {
-  display: flex;
-  flex-direction: column;
-  height: 92vh;
-  max-height: 92vh;
-  max-width: 95vw;
-  width: 95vw;
-}
-
-.chart-modal-head {
-  align-items: center;
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 1rem;
-  /* Keep the Split view button clear of the absolute close × */
-  padding-right: 2rem;
-}
-
-.chart-modal-head h2 {
-  font-size: 1.25rem;
-  margin: 0;
-}
-
-.chart-slots {
-  display: grid;
-  flex: 1;
-  gap: 1rem;
-  min-height: 0;
-}
-
-.chart-slots.split {
-  grid-template-columns: 1fr 1fr;
-}
-
-.chart-slot {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  min-width: 0;
-}
-
-.chart-slot-head {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
-}
-
 .chart-pick {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -508,39 +530,69 @@ tbody tr:hover {
   padding: 0.4rem 0.6rem;
 }
 
-/* Kind tag beside the chart picker: the select's visible value is only
-   the subject label, so two same-subject slots of different kinds
-   would read identically without it. */
-.slot-kind {
+/* Pane export/maximize chips: bordered buttons so they read as
+   controls. The export chip's auto margin pushes it and the maximize
+   chip to the pane head's right edge. */
+.pane-export,
+.pane-focus {
+  align-items: center;
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
   color: var(--muted);
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  padding: 0.15rem 0.45rem;
-  text-transform: uppercase;
-  white-space: nowrap;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.9rem;
+  justify-content: center;
+  line-height: 1;
+  padding: 0.4rem 0.6rem;
 }
 
-/* Slot filter controls (year seg, country picker…) sit in a row inside
-   the slot head and wrap under each other on narrow slots. */
+.pane-export {
+  margin-left: auto;
+}
 
-.slot-filters {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
+/* Maximize is the pane's main layout control — slightly larger than
+   the export chip. */
+.pane-focus {
+  font-size: 1.05rem;
+  padding: 0.35rem 0.7rem;
+}
+
+.pane-export:hover,
+.pane-focus:hover {
+  border-color: var(--accent-strong);
+  color: var(--text);
+}
+
+/* A donut in a narrow pane is too tight for its figure+table row
+   layout — stack it. workspace.js's ResizeObserver sets .narrow from
+   the pane's real width, so this covers split panes, dragged splits,
+   and phones alike. The figure gets a fixed share so the table still
+   has room to scroll. */
+.pane.narrow .donut-pane {
+  flex-direction: column;
   gap: 0.5rem;
 }
 
-/* applyScopeFilters hides controls via the hidden attr, but controls
-   with their own display rule (e.g. .success-toggle) would defeat it. */
-.slot-filters > [hidden] {
-  display: none;
+.pane.narrow .donut-figure {
+  flex: 0 0 45%;
+}
+
+/* In a narrow pane the table filter takes its own full-width row —
+   its vw-based width would overflow the pane otherwise. */
+.pane.narrow .pane-filter {
+  flex: 1 0 100%;
+}
+
+.pane.narrow .pane-filter input {
+  flex: 1;
+  min-width: 0;
+  width: auto;
 }
 
 /* Country filter: button summarizes the live selection and opens a
-   checkbox popover below the slot head. */
+   checkbox popover below the pane head. */
 
 .country-filter {
   position: relative;
@@ -643,52 +695,6 @@ tbody tr:hover {
   color: var(--muted);
   margin-bottom: 0.2rem;
   padding-bottom: 0.4rem;
-}
-
-/* Slot export/remove controls: bordered chips so they read as buttons
-   and are visually distinct from the modal's bare ×. The export chip
-   carries the row's auto margin, pushing it and the close chip to the
-   slot head's right edge. */
-.slot-close,
-.slot-export {
-  align-items: center;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--muted);
-  cursor: pointer;
-  display: inline-flex;
-  font-size: 0.9rem;
-  justify-content: center;
-  line-height: 1;
-  padding: 0.4rem 0.6rem;
-}
-
-.slot-export {
-  margin-left: auto;
-}
-
-.slot-close:hover,
-.slot-export:hover {
-  border-color: var(--accent-strong);
-  color: var(--text);
-}
-
-/* display:inline-flex would otherwise beat the UA [hidden] rule and
-   keep the button visible on the last remaining slot */
-.slot-close[hidden] {
-  display: none;
-}
-
-/* Slot canvases stretch to fill instead of the inline box's fixed height */
-.chart-slot .chart-pane {
-  flex: 1;
-  height: auto;
-  min-height: 0;
-}
-
-.chart-slot .pager {
-  margin-top: 0.75rem;
 }
 
 /* Donut pane: figure on the left, scrollable percentage table beside
@@ -891,70 +897,104 @@ tbody tr:hover {
   font-size: 0.9rem;
 }
 
-@media (max-width: 640px) {
-  /* Button joins the header flow below the title instead of overlapping it */
+@media (max-width: 800px) {
   header {
-    padding: 2rem 1rem 1.5rem;
-    align-items: center;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .download-btn {
-    display: inline-block;
-    margin: 0.5rem 0;
-    order: 2;
-    position: static;
-  }
-
-  .header-note {
-    order: 3;
+    padding: 0.4rem 0.75rem;
   }
 
   header h1 {
-    font-size: 1.9rem;
+    font-size: 0.95rem;
+  }
+
+  .hdr-btn {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.55rem;
   }
 
   main {
-    padding: 1rem 0.75rem 2rem;
+    padding: 0.5rem 0.75rem;
   }
 
-  /* Cards fit two-up instead of one-per-row */
-  .cards {
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    gap: 0.75rem;
+  /* Stacked split: fixed even halves, no divider drag. workspace.js
+     clears the inline flex styles the desktop drag writes. */
+  #workspace {
+    flex-direction: column;
   }
 
-  /* Tab buttons on one line, filter on its own full-width row */
-  .tabs {
-    flex-wrap: wrap;
+  .divider {
+    display: none;
   }
 
-  .filter {
-    flex: 1 0 100%;
-    margin-left: 0;
+  /* The divider supplies the pane gap on desktop; the stacked layout
+     needs its own. */
+  .pane:last-child {
+    margin-top: 0.5rem;
   }
 
-  .filter input {
+  .pane {
+    padding: 0.5rem;
+  }
+
+  /* Compact pane head: picker + action chips on line one, view
+     controls on line two — every control row is view space on a
+     phone. `order` lifts the controls row under the picker without
+     touching the DOM. */
+  /* > only: the country button is also a .chart-pick but must not grow */
+  .pane-head > .chart-pick {
     flex: 1;
+    min-width: 0;
+  }
+
+  .pane-head {
+    gap: 0.35rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .pane-controls {
+    flex: 1 0 100%;
+    order: 3;
+    /* Year segs can't shrink enough for a phone-width head: let them
+       scroll sideways inside their row instead of overflowing. */
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .pane-controls .seg {
+    flex: 1;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+  }
+
+  .seg-btn {
+    padding: 0.4rem 0.65rem;
+  }
+
+  .country-filter .chart-pick {
+    max-width: 45vw;
+  }
+
+  .pane-filter {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .pane-filter input {
+    flex: 1;
+    min-width: 0;
     width: auto;
   }
 
-  #filter-count {
-    white-space: nowrap;
+  .pane-hint {
+    display: none;
   }
 
-  /* Tables scroll horizontally inside the card instead of crushing columns */
-  .table-wrap {
-    overflow-x: auto;
+  .pane > .pager {
+    margin-top: 0.5rem;
   }
 
   th, td {
     padding: 0.5rem;
-  }
-
-  .chart-pane {
-    height: 300px;
   }
 
   /* All modals go truly full screen on small screens — no margins or
@@ -973,98 +1013,8 @@ tbody tr:hover {
     padding: 1rem;
   }
 
-  .modal-card.modal-full {
-    height: 100dvh;
-    max-height: 100dvh;
-    max-width: 100%;
-    padding: 0.75rem;
-    width: 100%;
-  }
-
-  .chart-modal-head {
-    margin-bottom: 0.5rem;
-  }
-
-  /* Split slots stack and split the modal height evenly */
-  .chart-slots {
-    gap: 0.5rem;
-  }
-
-  .chart-slots.split {
-    grid-auto-rows: 1fr;
-    grid-template-columns: 1fr;
-  }
-
-  .chart-slot-head {
-    gap: 0.35rem;
-    margin-bottom: 0.5rem;
-  }
-
-  /* Compact slot head: picker + close on line one, filters on line
-     two — every control row is chart space on a phone. `order` lifts
-     the close chip up beside the select without touching the DOM. */
-  /* > only: the country button is also a .chart-pick but must not grow */
-  .chart-slot-head > .chart-pick {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .slot-close {
-    order: 2;
-  }
-
-  .slot-filters {
-    flex: 1 0 100%;
-    order: 3;
-  }
-
-  .slot-filters .seg {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .seg-btn {
-    padding: 0.4rem 0.65rem;
-  }
-
-  .country-filter .chart-pick {
-    max-width: 45vw;
-  }
-
-  .chart-slot .pager {
-    margin-top: 0.5rem;
-  }
-
-  /* Year segs can't shrink enough for a phone-width head: let them
-     scroll sideways inside their row instead of overflowing the slot.
-     max-width beats the flex items' min-content floor. */
-  #chart-scope,
-  .slot-filters {
-    max-width: 100%;
-    min-width: 0;
-  }
-
-  .chart-head .seg,
-  .slot-filters .seg {
-    max-width: 100%;
-    overflow-x: auto;
-  }
-
-  .chart-slot-head .chart-pick {
-    max-width: 100%;
-    min-width: 0;
-  }
-
-  /* Donut stacks vertically: figure gets a fixed share so the table
-     still has room to scroll */
-  .donut-pane {
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .donut-figure {
-    flex: 0 0 45%;
-  }
+  /* (Donut stacking is handled by .pane.narrow — real pane width, not
+     the viewport breakpoint.) */
 
   /* The country popover stays inside the viewport */
   .country-pop {
