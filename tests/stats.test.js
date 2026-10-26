@@ -91,6 +91,19 @@ test('family variants are chart rows', t => {
         assert.ok(charted.has(name), `${name} under a family but never charted`);
 });
 
+test('manufacturer map covers chart rows', t => {
+  needSite(t);
+  // The manufacturer bars regroup the flat rockets bucket through
+  // rocketManufacturers — a missing entry would silently drop that
+  // rocket's launches from the chart.
+  const {STATS} = loaded;
+  const charted = new Set(Object.values(STATS.yearly)
+    .flatMap(b => Object.keys(b.rockets)));
+  for (const name of charted)
+    assert.ok(STATS.rocketManufacturers[name],
+      `${name} missing from rocketManufacturers`);
+});
+
 test('country filter keys can chart', t => {
   needSite(t);
   // Guards the '???' regression: every filterable rocket or

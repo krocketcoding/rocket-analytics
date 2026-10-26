@@ -76,17 +76,34 @@ const rocketEntities = () =>
   entityOptions(Object.keys(windowTotals('rockets')).map(k => [k, k]));
 
 // Site rows are nested {site: {rocket: cats}} so a rocket selection can
-// re-aggregate them; an empty selection sums every rocket. Sites left
-// with no launches drop out so they don't draw zero-height bars.
-const siteRows = (rows, sel) => Object.fromEntries(
-  Object.entries(rows).map(([site, perRocket]) => {
-    const cats = {};
-    for (const name of sel.size ? sel : Object.keys(perRocket)) {
-      for (const [cat, n] of Object.entries(perRocket[name] || {}))
-        cats[cat] = (cats[cat] || 0) + n;
-    }
-    return [site, cats];
-  }).filter(([, cats]) => rowTotal(cats) > 0));
+// subset which rockets feed each site; an empty selection keeps every
+// rocket. Sites left with no launches drop out so they don't draw
+// zero-height bars — inner keys only exist for rockets with ≥1 launch,
+// so non-empty inner means a positive total.
+const siteNested = (rows, sel) => Object.fromEntries(
+  Object.entries(rows).map(([site, perRocket]) => [site, sel.size
+    ? Object.fromEntries(Object.entries(perRocket)
+        .filter(([name]) => sel.has(name)))
+    : perRocket])
+    .filter(([, perRocket]) => Object.keys(perRocket).length));
+
+// Flat site rows are the nested ones summed through familyRows' flat
+// mode — the variantStack=false branch does exactly this aggregation.
+const siteRows = (rows, sel) => familyRows(siteNested(rows, sel), false);
+
+// {mfr: {rocket: cats}} — re-slices the flat rockets rows through the
+// rocket->manufacturer map into the nested shape familyRows reads, so
+// the manufacturer chart gets the same category/variant stack swap
+// without its own nested yearly bucket. Rockets with no resolvable
+// manufacturer drop out, as they always have in that grouping.
+const rocketsByMfr = rows => {
+  const out = {};
+  for (const [name, cats] of Object.entries(rows)) {
+    const mfr = STATS.rocketManufacturers[name];
+    if (mfr) (out[mfr] ??= {})[name] = cats;
+  }
+  return out;
+};
 
 // Family rows are nested {family: {rocket: cats}} like site rows so the
 // 'variant' toggle can swap the stack: off, each family's rockets sum
@@ -141,6 +158,25 @@ const trendDef = g => ({label: g.label, kind: 'Trend', filters: ['entity', 'succ
                         defaultEntity: topWindowed(g.key), data: trendData(g.key),
                         mount: pane => lineChart(pane.querySelector('canvas'), g.names)});
 
+// Bars def for a grouping that can swap its stack between launch
+// categories and per-variant segments — 'variant' is always the last
+// filter. `nested` maps filter state to {group: {rocket: cats}} rows.
+// The country filter applies only when the def opts in: a pane's
+// country picks persist across defs, so an unconditional filter would
+// wrongly prune charts that never offer it. topCat re-sorts regrouped
+// rows by total like the stats build's bucket order.
+const variantBarDef = (label, nested, {filters = [], countryMap, names, entities} = {}) => ({
+  label, kind: 'Bars',
+  filters: ['year', ...filters, 'variant'],
+  countryMap, entities, unit: 'launches',
+  data: s => {
+    let rows = nested(s);
+    if (countryMap) rows = applyCountryFilter(rows, s.country, countryMap);
+    return topCat(familyRows(rows, s.variantStack));
+  },
+  mount: pane => stackedBarChart(pane.querySelector('canvas'), names),
+});
+
 // Registry of every chart a pane can show — workspace.js merges in the
 // table views to build the pickers. `kind` groups the picker's options
 // under an optgroup heading. Each def lists the filters it supports
@@ -156,19 +192,22 @@ const trendDef = g => ({label: g.label, kind: 'Trend', filters: ['entity', 'succ
 // `defaultEntity`, the trend picker's most-launched fallback.
 const CHART_DEFS = {
   'by-rocket': barDef(GROUPS.rocket),
-  // The family chart's variant stacking is its own thing — it stays a
-  // hand-written def rather than a GROUPS entry.
-  'by-rocket-family': {
-    label: 'By rocket family',
-    kind: 'Bars',
-    filters: ['year', 'variant'],
-    unit: 'launches',
-    data: s => familyRows(yearRows('families', s.year), s.variantStack),
-    mount: pane => stackedBarChart(pane.querySelector('canvas')),
-  },
-  'by-manufacturer': barDef(GROUPS.manufacturer),
+  'by-rocket-family': variantBarDef('By rocket family',
+    s => yearRows('families', s.year)),
+  // Manufacturer bars regroup the flat rockets bucket into
+  // {mfr: {rocket: cats}} via the stats map — no nested yearly bucket
+  // needed.
+  'by-manufacturer': variantBarDef('By manufacturer',
+    s => rocketsByMfr(yearRows('rockets', s.year)),
+    {filters: ['country'], countryMap: MFR_COUNTRIES,
+     names: STATS.manufacturerNames}),
   'by-country': barDef(GROUPS.country),
-  'by-site': barDef(GROUPS.site),
+  // Sites get the variant stack too — the bucket is already nested
+  // {site: {rocket: cats}}, and the rocket filter subsets which
+  // rockets feed each site in either stack mode.
+  'by-site': variantBarDef('By launch site',
+    s => siteNested(yearRows('sites', s.year), s.rockets),
+    {filters: ['rocket'], names: STATS.siteNames, entities: rocketEntities}),
   'by-rocket-donut': donutDef(GROUPS.rocket),
   'by-manufacturer-donut': donutDef(GROUPS.manufacturer),
   'by-country-donut': donutDef(GROUPS.country),

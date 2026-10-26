@@ -275,9 +275,14 @@ const FILTER_BUILDERS = {
   success: makeToggle('Successes only', 'successOnly'),
   // 'Cumulative' turns a trend's per-year counts into a running total.
   cumulative: makeToggle('Cumulative', 'cumulative'),
-  // 'By variant' swaps the rocket-family chart's stacking: each segment
-  // is a rocket variant instead of a launch category.
-  variant: makeToggle('By variant', 'variantStack'),
+  // The rocket-family chart stacks two ways — launch categories or
+  // per-variant segments — so it gets a two-option seg control, not a
+  // checkbox: the buttons name both modes and the active one shows the
+  // current stack at a glance.
+  variant: (slot, reload) => makeScopeSeg(
+    slot.filters.variantStack ? 'Rocket variants' : 'Launch categories',
+    v => { slot.filters.variantStack = v === 'Rocket variants'; reload(); },
+    ['Launch categories', 'Rocket variants']),
   // Multi-select entity picker for trend charts: filters.entities is
   // a Set that can never empty — a trend with no series would render
   // blank — so keepOne refuses the last uncheck and Reset returns to

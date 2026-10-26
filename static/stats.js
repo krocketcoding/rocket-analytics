@@ -68,6 +68,10 @@ function computeStats(data) {
   // for the charts' country filters.
   const rocketCountries = {};
   const manufacturerCountries = {};
+  // Rocket name -> manufacturer chart label, so the manufacturer bars
+  // can group the flat rockets bucket into {mfr: {rocket: cats}} like
+  // the families bucket for the variant stack toggle.
+  const rocketManufacturers = {};
   // Launch-site short name -> full location name, for tooltips.
   const siteNames = {};
   // Tally fetched launches per calendar year. Each year gets a
@@ -162,6 +166,7 @@ function computeStats(data) {
     // launch pad's: one rocket can fly from pads in several countries.
     if (manufacturer?.name) {
       const label = manufacturer.abbrev || manufacturer.name;
+      rocketManufacturers[name] = label;
       // manufacturerNames is already complete from the per-launch
       // loop; this pass only fills the country filter map.
       if (chartedMfrs.has(label) && manufacturer.country)
@@ -176,6 +181,7 @@ function computeStats(data) {
       [...countryCodes].map(code => [code, countryName(code)])),
     rocketCountries,
     manufacturerCountries,
+    rocketManufacturers,
     siteNames,
   };
 }
