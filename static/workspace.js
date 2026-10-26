@@ -102,8 +102,28 @@ let ratio = 0.5;       // pane A's share of the desktop split
 // figure+table row can't fit, so 'narrow' flips it to a column. A
 // ResizeObserver covers every cause — divider drag, maximize, window
 // resize, mobile stacking — no matter how the width got narrow.
-const paneSizer = new ResizeObserver(entries => entries.forEach(en =>
-  en.target.classList.toggle('narrow', en.contentRect.width < 600)));
+const paneSizer = new ResizeObserver(entries => entries.forEach(en => {
+  en.target.classList.toggle('narrow', en.contentRect.width < 600);
+  const pane = panes.find(p => p.el === en.target);
+  if (pane) retestCompact(pane);
+}));
+
+// Compact mode moves the controls row into a Filters popover when the
+// head can't fit it on one line — measured on the real controls, not a
+// fixed width, so a light filter set (a lone picker) stays inline as
+// long as it fits. The signal is head height: one line is about the
+// picker's height, and either wrap mode — the controls dropping to a
+// second line, or wrapping internally — roughly doubles it. Controls
+// are display:none while compacted, so the class comes off to measure.
+// Re-runs on resize, view mount, and every saveState — a picker label
+// change ('Rocket: a, b, c') can wrap the head after the fact.
+function retestCompact(pane) {
+  pane.el.classList.remove('compact');
+  const wrapped = pane.select.parentElement.offsetHeight
+    > pane.select.offsetHeight * 1.4;
+  if (wrapped) pane.el.classList.add('compact');
+  else pane.controlsEl.classList.remove('open');
+}
 
 // Rebuild a pane's view picker, one optgroup per view kind. Every view
 // can repeat across panes — charts mount fresh and tables render fresh
@@ -176,6 +196,7 @@ function mountPane(pane) {
   pane.inst?.chart?.destroy();
   pane.inst = null;
   pane.applyFilter = null;
+  pane.controlsEl.classList.remove('open');
   pane.body.replaceChildren();
   pane.pagerEl.hidden = true;
   pane.kindTag.textContent = def.kind;
@@ -201,11 +222,15 @@ function mountPane(pane) {
   pane.exportBtn.title = expLabel;
   pane.exportBtn.setAttribute('aria-label', expLabel);
   syncAxes();
+  // The new def's controls may be wider or narrower than the last —
+  // remeasure whether the head can still fit them inline.
+  retestCompact(pane);
 }
 
-// Pane skeleton: head row (kind tag, view picker, per-view controls,
-// export, maximize) over a body holding the view, plus a pager shown
-// only by multi-page charts.
+// Pane skeleton: head row (kind tag, view picker, per-view controls —
+// collapsing into a Filters popover in compact mode — export,
+// maximize) over a body holding the view, plus a pager shown only by
+// multi-page charts.
 function makePane() {
   const el = document.createElement('div');
   el.className = 'pane';
@@ -214,6 +239,9 @@ function makePane() {
       <span class="pane-kind"></span>
       <select class="chart-pick" aria-label="View"></select>
       <div class="pane-controls"></div>
+      <div class="pick-filter pane-filters">
+        <button class="chart-pick" type="button">Filters</button>
+      </div>
       <button class="pane-export" type="button" aria-label="Download" title="Download">↓</button>
       <button class="pane-focus" type="button" aria-label="Maximize" title="Maximize">⛶</button>
     </div>
@@ -230,6 +258,8 @@ function makePane() {
     kindTag: el.querySelector('.pane-kind'),
     select: el.querySelector('.chart-pick'),
     controlsEl: el.querySelector('.pane-controls'),
+    filtersWrap: el.querySelector('.pane-filters'),
+    filtersBtn: el.querySelector('.pane-filters .chart-pick'),
     exportBtn: el.querySelector('.pane-export'),
     focusBtn: el.querySelector('.pane-focus'),
     body: el.querySelector('.pane-body'),
@@ -262,6 +292,16 @@ function makePane() {
     mountPane(pane);
     refreshPickers();
     saveState();
+  });
+  // The compact-mode Filters button toggles the controls popover; a
+  // click outside the panel or the button closes it. Nested pick-pops
+  // live inside the panel, so they can't close it.
+  pane.filtersBtn.addEventListener('click', () =>
+    pane.controlsEl.classList.toggle('open'));
+  document.addEventListener('click', e => {
+    if (!pane.filtersWrap.contains(e.target) &&
+        !pane.controlsEl.contains(e.target))
+      pane.controlsEl.classList.remove('open');
   });
   pane.exportBtn.addEventListener('click', () =>
     isChart(pane.defId) ? exportPng(pane) : exportCsv(pane));
@@ -349,30 +389,46 @@ const encList = set => [...set].map(encodeURIComponent).join(',');
 const decList = s =>
   s.split(',').filter(Boolean).map(v => decodeURIComponent(v));
 
+// The serialized filter tokens for one pane — shared by the hash
+// serializer and the compact-mode Filters button's active count.
+const paneTokens = p => {
+  const f = p.filters, t = [];
+  if (isChart(p.defId)) {
+    const c = f.country ?? {codes: new Set(), negate: false};
+    if (f.year && f.year !== DEFAULT_SCOPE) t.push('y' + f.year);
+    if (c.codes.size || c.negate)
+      t.push('c' + (c.negate ? '!' : '') + encList([...c.codes].sort()));
+    if (f.successOnly) t.push('so');
+    if (f.cumulative) t.push('cm');
+    if (f.variantStack) t.push('vs');
+    if (f.entities?.size) t.push('e' + encList(f.entities));
+    if (f.rockets?.size) t.push('r' + encList(f.rockets));
+  } else {
+    if (f.q) t.push('q' + encodeURIComponent(f.q));
+    // The past table carries a year scope too — a non-default pick
+    // (default: newest year) serializes like the chart year.
+    const scopes = LAUNCH_SCOPES[p.defId];
+    if (scopes && f.year !== scopes[0]) t.push('y' + f.year);
+    // The rockets table's sort is per-pane filter state — tables.js
+    // writes {sort, dir} into it on each header click.
+    if (p.defId === 'rockets' && f.sort)
+      t.push('t' + f.sort + '.' + (f.dir || 'desc'));
+  }
+  return t;
+};
+
+// Compact-mode Filters button: badges the count of user-set filters.
+// 'e' tokens are excluded — the entity picker always carries its
+// mandatory default selection on trend charts, so it isn't a choice.
+function updateFiltersBtn(pane) {
+  const n = paneTokens(pane).filter(t => t[0] !== 'e').length;
+  pane.filtersBtn.textContent = n ? `Filters · ${n}` : 'Filters';
+  pane.filtersWrap.classList.toggle('has-sel', n > 0);
+}
+
 function serialize() {
   const spec = p => {
-    const f = p.filters, t = [];
-    if (isChart(p.defId)) {
-      const c = f.country ?? {codes: new Set(), negate: false};
-      if (f.year && f.year !== DEFAULT_SCOPE) t.push('y' + f.year);
-      if (c.codes.size || c.negate)
-        t.push('c' + (c.negate ? '!' : '') + encList([...c.codes].sort()));
-      if (f.successOnly) t.push('so');
-      if (f.cumulative) t.push('cm');
-      if (f.variantStack) t.push('vs');
-      if (f.entities?.size) t.push('e' + encList(f.entities));
-      if (f.rockets?.size) t.push('r' + encList(f.rockets));
-    } else {
-      if (f.q) t.push('q' + encodeURIComponent(f.q));
-      // The past table carries a year scope too — a non-default pick
-      // (default: newest year) serializes like the chart year.
-      const scopes = LAUNCH_SCOPES[p.defId];
-      if (scopes && f.year !== scopes[0]) t.push('y' + f.year);
-      // The rockets table's sort is per-pane filter state — tables.js
-      // writes {sort, dir} into it on each header click.
-      if (p.defId === 'rockets' && f.sort)
-        t.push('t' + f.sort + '.' + (f.dir || 'desc'));
-    }
+    const t = paneTokens(p);
     return p.defId + (t.length ? ';' + t.join(';') : '');
   };
   let s = panes.map(spec).join('|');
@@ -424,6 +480,10 @@ function parseState(str) {
 
 function saveState() {
   const s = serialize();
+  // A filter change can change control widths (picker summaries), so
+  // the head's fit gets remeasured and the badge count updated.
+  panes.forEach(updateFiltersBtn);
+  panes.forEach(retestCompact);
   try { localStorage.setItem(STORAGE_KEY, s); } catch {}
   // replaceState can throw in sandboxed contexts; persistence is
   // best-effort either way.

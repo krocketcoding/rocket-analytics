@@ -198,6 +198,17 @@ main {
   flex-wrap: wrap;
   gap: 0.5rem;
   margin-bottom: 0.75rem;
+  /* The compact-mode controls popover anchors to the head. */
+  position: relative;
+}
+
+/* The view picker never shrinks past readability — shrinking a flex
+   item below its content needs an explicit min-width under its
+   min-content floor, and 9rem keeps ~16 chars of the label visible.
+   The floor also counts in the compact-mode fit measurement: if the
+   head can't fit controls *and* a readable picker, it goes compact. */
+.pane-head > .chart-pick {
+  min-width: 9rem;
 }
 
 .pane-body {
@@ -597,16 +608,61 @@ tbody tr[data-set]:focus-visible {
   flex: 0 0 45%;
 }
 
-/* In a narrow pane the table filter takes its own full-width row —
-   its vw-based width would overflow the pane otherwise. */
-.pane.narrow .pane-filter {
-  flex: 1 0 100%;
+/* Filters popover button — hidden unless the pane's head can't fit an
+   inline controls row (.compact is toggled by measurement in
+   workspace.js, not a fixed width, so light filter sets stay inline
+   as long as they fit). */
+.pane-filters {
+  display: none;
 }
 
-.pane.narrow .pane-filter input {
+.pane.compact .pane-filters {
+  display: block;
+}
+
+.pane.compact .pane-head > .chart-pick {
+  flex: 1;
+}
+
+/* Compact panes tuck the controls row into a popover under the head —
+   an arbitrary set of segs, pickers, and toggles can't fit a narrow
+   head, and a panel columns them without it. The popover opens over
+   the pane body; nested pick-pops still anchor to their own wrappers. */
+.pane.compact .pane-controls {
+  display: none;
+}
+
+.pane.compact .pane-controls.open {
+  background: var(--surface-active);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  inset: 100% 0 auto 0;
+  margin-top: 0.4rem;
+  padding: 0.65rem;
+  position: absolute;
+  z-index: 30;
+}
+
+/* Long segs get sideways scroll inside the panel as a last resort. */
+.pane.compact .pane-controls .seg {
+  overflow-x: auto;
+}
+
+.pane.compact .pane-filter {
+  min-width: 0;
+}
+
+.pane.compact .pane-filter input {
   flex: 1;
   min-width: 0;
   width: auto;
+}
+
+.pane.compact .pane-hint {
+  display: none;
 }
 
 /* Checkbox pickers (country, rocket, entity): button summarizes the
@@ -953,58 +1009,17 @@ tbody tr[data-set]:focus-visible {
     padding: 0.5rem;
   }
 
-  /* Compact pane head: picker + action chips on line one, view
-     controls on line two — every control row is view space on a
-     phone. `order` lifts the controls row under the picker without
-     touching the DOM. */
-  /* > only: the country button is also a .chart-pick but must not grow */
+  /* Compact pane head on a phone: the picker claims the row's free
+     space (down to its readable min-width floor, not below).
+     > only: the country button is also a .chart-pick but must not
+     grow */
   .pane-head > .chart-pick {
     flex: 1;
-    min-width: 0;
   }
 
   .pane-head {
     gap: 0.35rem;
     margin-bottom: 0.5rem;
-  }
-
-  .pane-controls {
-    flex: 1 0 100%;
-    order: 3;
-    /* Year segs can't shrink enough for a phone-width head: let them
-       scroll sideways inside their row instead of overflowing. */
-    max-width: 100%;
-    min-width: 0;
-  }
-
-  .pane-controls .seg {
-    flex: 1;
-    max-width: 100%;
-    min-width: 0;
-    overflow-x: auto;
-  }
-
-  .seg-btn {
-    padding: 0.4rem 0.65rem;
-  }
-
-  .pick-filter .chart-pick {
-    max-width: 45vw;
-  }
-
-  .pane-filter {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .pane-filter input {
-    flex: 1;
-    min-width: 0;
-    width: auto;
-  }
-
-  .pane-hint {
-    display: none;
   }
 
   .pane > .pager {
