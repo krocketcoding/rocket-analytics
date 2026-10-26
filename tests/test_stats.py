@@ -26,12 +26,6 @@ class ComputeStatsTest(unittest.TestCase):
         rockets = collect_entities(cache["upcoming"] + cls.previous)["rockets"]
         cls.stats = compute_stats(rockets, cls.previous)
 
-    def test_lifetime_rows_are_success_failed_only(self):
-        # The API has no lifetime orbital/suborbital breakdown.
-        for key in ("by_rocket", "by_manufacturer", "by_country"):
-            for cats in self.stats[key].values():
-                self.assertLessEqual(set(cats), {"success", "failed"}, key)
-
     def test_yearly_rows_are_orbital_suborbital_failed(self):
         # 'sites' and 'families' are nested {label: {rocket: cats}};
         # the rest are flat.
@@ -57,27 +51,11 @@ class ComputeStatsTest(unittest.TestCase):
             self.assertEqual(len(set(totals.values())), 1,
                              f"{year} grouping totals differ: {totals}")
 
-    def test_site_totals_cover_the_window(self):
-        # 'all' for sites reads the API's lifetime location count —
-        # every charted site has one, and it covers at least the
-        # fetched-window tally since the window is a subset of history.
-        # site_totals may also hold sites whose only launches fell in
-        # the dropped oldest year — the 'all' scope legitimately shows
-        # sites no yearly bucket has.
-        yearly_sites = {s for b in self.stats["yearly"].values()
-                        for s in b["sites"]}
-        self.assertLessEqual(yearly_sites, set(self.stats["site_totals"]))
-        for site, total in self.stats["site_totals"].items():
-            window = sum(
-                sum(inner.values())
-                for bucket in self.stats["yearly"].values()
-                for inner in bucket["sites"].get(site, {}).values())
-            self.assertGreaterEqual(total, window, site)
-
     def test_site_rockets_are_chart_rows(self):
         # Every rocket keyed under a site exists in the lifetime rocket
         # rows — a rocket filter pick can never hit a phantom name.
-        charted = set(self.stats["by_rocket"])
+        charted = {r for b in self.stats["yearly"].values()
+                   for r in b["rockets"]}
         for bucket in self.stats["yearly"].values():
             for per_rocket in bucket["sites"].values():
                 self.assertLessEqual(set(per_rocket), charted)
@@ -85,23 +63,23 @@ class ComputeStatsTest(unittest.TestCase):
     def test_family_variants_are_chart_rows(self):
         # The family tally gates on the same rocket name as the sites
         # grouping, so every variant segment is a charted rocket.
-        charted = set(self.stats["by_rocket"])
+        charted = {r for b in self.stats["yearly"].values()
+                   for r in b["rockets"]}
         for bucket in self.stats["yearly"].values():
             for per_rocket in bucket["families"].values():
                 self.assertLessEqual(set(per_rocket), charted)
-
-    def test_total_matches_by_rocket_rows(self):
-        total = sum(sum(c.values()) for c in self.stats["by_rocket"].values())
-        self.assertEqual(total, self.stats["total"])
 
     def test_country_filter_keys_can_chart(self):
         # Guards the '???' regression: every filterable rocket or
         # manufacturer must exist in its chart's rows — a dead entry
         # could only ever produce an empty chart.
-        self.assertLessEqual(set(self.stats["rocket_countries"]),
-                             set(self.stats["by_rocket"]))
+        charted = {r for b in self.stats["yearly"].values()
+                   for r in b["rockets"]}
+        charted_mfrs = {m for b in self.stats["yearly"].values()
+                        for m in b["manufacturers"]}
+        self.assertLessEqual(set(self.stats["rocket_countries"]), charted)
         self.assertLessEqual(set(self.stats["manufacturer_countries"]),
-                             set(self.stats["by_manufacturer"]))
+                             charted_mfrs)
 
     def test_oldest_year_dropped_at_page_cap(self):
         # Newest-first fetches can truncate the oldest year mid-way, so

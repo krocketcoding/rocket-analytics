@@ -81,7 +81,6 @@ def compute_stats(rockets, previous):
     # here since they record real launches.
     site_countries = {}
     site_names = {}
-    site_totals = {}
     # Tally fetched launches per calendar year. Each year gets a
     # name -> category dict per chart grouping: rockets, manufacturers,
     # countries, launch sites, and rocket families. Sites and families
@@ -126,44 +125,8 @@ def compute_stats(rockets, previous):
             site_names[site] = location["name"]
             if location.get("country_code"):
                 site_countries[site] = location["country_code"]
-            if location.get("total_launch_count"):
-                site_totals[site] = location["total_launch_count"]
             if name:
                 site_counts[site][name][cat] += 1
-
-    # Lifetime success/failure pools per grouping. The API has no
-    # lifetime orbital/suborbital breakdown, so 'all time' stacks as
-    # success + failed rather than showing estimated segments.
-    mfr_pool = defaultdict(lambda: {"success": 0, "failed": 0})
-    country_pool = defaultdict(lambda: {"success": 0, "failed": 0})
-    by_rocket = {}
-    for r in rockets.values():
-        name = r.get("name")
-        if not r.get("launches"):
-            continue
-        # Only rockets that can appear in the charts get a country
-        # mapping — otherwise dead codes like the API's '???' (on
-        # never-launched "Unknown Launch Vehicle") end up as filter
-        # options that can only produce an empty chart.
-        if r.get("manufacturer_country") and name:
-            rocket_countries[name] = r["manufacturer_country"]
-        cats = {"success": r.get("successful") or 0, "failed": r.get("failed") or 0}
-        if name:
-            by_rocket[name] = cats
-        # Country groups by the rocket manufacturer's country, not the
-        # launch pad's: one rocket can fly from pads in several countries.
-        pools = []
-        if r.get("manufacturer"):
-            label = r.get("manufacturer_abbrev") or r["manufacturer"]
-            pools.append(mfr_pool[label])
-            manufacturer_names[label] = r["manufacturer"]
-            if r.get("manufacturer_country"):
-                manufacturer_countries[label] = r["manufacturer_country"]
-        if r.get("manufacturer_country"):
-            pools.append(country_pool[r["manufacturer_country"]])
-        for pool in pools:
-            pool["success"] += cats["success"]
-            pool["failed"] += cats["failed"]
 
     years = sorted(per_year, reverse=True)
     # Results are fetched newest-first and may be cut off mid-year at the
@@ -176,7 +139,8 @@ def compute_stats(rockets, previous):
     # so the axis labels can stay as the short codes. rocket_countries is
     # included so the country filter can name codes like '???' (Unknown)
     # that belong to rockets with no recorded launches.
-    country_codes = (set(country_pool) | set(rocket_countries.values()) |
+    country_codes = (set(rocket_countries.values()) |
+                     set(manufacturer_countries.values()) |
                      {c for _, _, counts, _, _ in per_year.values() for c in counts})
 
     yearly = {}
@@ -188,23 +152,35 @@ def compute_stats(rockets, previous):
                         "sites": top_nested(site_c),
                         "families": top_nested(fam_c)}
 
+    # Country-filter maps gate on rockets/manufacturers that appear in
+    # the kept yearly buckets — otherwise dead codes like the API's
+    # '???' (on never-launched "Unknown Launch Vehicle") end up as
+    # filter options that can only produce an empty chart. The gate
+    # uses `yearly`, not `per_year`, so rockets whose only launches fell
+    # in the page-capped dropped year stay unlisted too.
+    charted_rockets = {n for b in yearly.values() for n in b["rockets"]}
+    charted_mfrs = {n for b in yearly.values() for n in b["manufacturers"]}
+    for r in rockets.values():
+        name = r.get("name")
+        if name not in charted_rockets:
+            continue
+        if r.get("manufacturer_country"):
+            rocket_countries[name] = r["manufacturer_country"]
+        # Country groups by the rocket manufacturer's country, not the
+        # launch pad's: one rocket can fly from pads in several countries.
+        if r.get("manufacturer"):
+            label = r.get("manufacturer_abbrev") or r["manufacturer"]
+            if label in charted_mfrs:
+                manufacturer_names[label] = r["manufacturer"]
+                if r.get("manufacturer_country"):
+                    manufacturer_countries[label] = r["manufacturer_country"]
+
     return {
-        "rocket_count": len(rockets),
-        "total": sum(sum(c.values()) for c in by_rocket.values()),
-        "successful": sum(r.get("successful") or 0 for r in rockets.values()),
-        "by_rocket": top_cat(by_rocket),
-        "by_manufacturer": top_cat(mfr_pool),
-        "by_country": top_cat(country_pool),
         "yearly": yearly,
         "manufacturer_names": manufacturer_names,
         "country_names": {code: country_name(code) for code in country_codes},
         "rocket_countries": rocket_countries,
         "manufacturer_countries": manufacturer_countries,
-        # site_totals is the API's true lifetime count per site — the
-        # site charts' 'all' scope. It's a flat number with no success/
-        # failure or rocket breakdown, unlike the per-year tallies.
-        "site_totals": dict(sorted(site_totals.items(),
-                                   key=lambda kv: (-kv[1], kv[0]))),
         "site_countries": site_countries,
         "site_names": site_names,
     }

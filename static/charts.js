@@ -6,9 +6,9 @@
 // and the offline build work — it shares app.js's top-level bindings
 // ($, esc, STATS) plus the factories and defs from the other chart
 // files; load order is JS_FILES in pipeline/config.py.
-// Segmented scope control over a `scopes` value list — 'all' labels as
-// 'All time', anything else is a year. Reports the choice via onChange;
-// hides itself when there's only one scope to pick.
+// Segmented scope control over a `scopes` value list — a button per
+// year. Reports the choice via onChange; hides itself when there's only
+// one scope to pick.
 function makeScopeSeg(scope, onChange, scopes) {
   const el = document.createElement('div');
   el.className = 'seg';
@@ -19,7 +19,7 @@ function makeScopeSeg(scope, onChange, scopes) {
     const b = document.createElement('button');
     b.className = 'seg-btn';
     b.dataset.scope = v;
-    b.textContent = v === 'all' ? 'All time' : v;
+    b.textContent = v;
     b.addEventListener('click', () => { activate(v); onChange(v); });
     btns.push(b);
     el.append(b);
@@ -29,9 +29,12 @@ function makeScopeSeg(scope, onChange, scopes) {
   return el;
 }
 
-// Scopes every def offers: 'all' first, then years oldest-to-newest
-// (yearly keys arrive newest-first from the stats build).
-const ALL_SCOPES = ['all', ...Object.keys(STATS.yearly).reverse()];
+// Scopes every chart offers: the fetched years, newest first —
+// STATS.yearly serializes with sorted keys (ascending), so a reverse
+// puts the newest year at the front where the seg leads.
+const ALL_SCOPES = Object.keys(STATS.yearly).reverse();
+// The default and fallback scope is the newest year.
+const DEFAULT_SCOPE = ALL_SCOPES[0];
 
 // Search box at the top of a .country-pop: typing narrows the option
 // rows by label text. The country picker's negate row is a mode
@@ -234,18 +237,14 @@ const makeToggle = (text, key) => (slot, reload) => {
 // object — defId, filters, and refreshPager are the fields it reads.
 const FILTER_BUILDERS = {
   year: (slot, reload) => {
-    // yearsOnly defs offer no 'all' scope (no lifetime dataset). A
-    // stale scope — a year that isn't in the data or 'all' on a
-    // yearsOnly def — resets to the first offered scope.
-    const scopes = CHART_DEFS[slot.defId].yearsOnly
-      ? ALL_SCOPES.slice(1) : ALL_SCOPES;
-    if (!scopes.includes(slot.filters.year))
-      slot.filters.year = scopes[0];
+    // A stale scope — a year that isn't in the data (e.g. an old saved
+    // hash) — resets to the newest year.
+    if (!ALL_SCOPES.includes(slot.filters.year))
+      slot.filters.year = DEFAULT_SCOPE;
     return makeScopeSeg(slot.filters.year, year => {
       slot.filters.year = year;
-      applyScopeFilters(slot);
       reload();
-    }, scopes);
+    }, ALL_SCOPES);
   },
   country: (slot, reload) => makeCountryFilter(slot.filters.country,
     reload, CHART_DEFS[slot.defId].countryMap ?? ROCKET_COUNTRIES),
@@ -336,21 +335,6 @@ const FILTER_BUILDERS = {
     return wrap;
   },
 };
-
-// Some filters can't apply to the 'all' scope — e.g. a site's lifetime
-// totals have no rocket attribution — so defs list which non-year
-// filters remain via allScopeFilters; the rest hide while 'all' is
-// active. mountPane tags each control with data-filter so this knows
-// which is which; the year seg itself always stays.
-function applyScopeFilters(slot) {
-  const def = CHART_DEFS[slot.defId];
-  [...slot.controlsEl.children].forEach(el => {
-    el.hidden = slot.filters.year === 'all' &&
-      !!def.allScopeFilters &&
-      el.dataset.filter !== 'year' &&
-      !def.allScopeFilters.includes(el.dataset.filter);
-  });
-}
 
 // Wire ‹ [n] of N › controls to a chart; returns a refresh that also
 // hides the pager when the data fits on one page. getChart is a function

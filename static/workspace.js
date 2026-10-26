@@ -4,8 +4,7 @@
 // the draggable divider, the split/focused display modes, CSV export,
 // and URL-hash + localStorage persistence. A classic script sharing the
 // earlier files' top-level bindings ($, esc, LAUNCHES, ENTITIES, STATS,
-// FILTER_BUILDERS, attachPager, freshFilters, applyScopeFilters,
-// rowTotal); load order is JS_FILES in pipeline/config.py.
+// FILTER_BUILDERS, attachPager, freshFilters, rowTotal); load order is JS_FILES in pipeline/config.py.
 
 // Table views join CHART_DEFS in one registry — the picker's 'Tables'
 // group and each pane's controls come from these defs. `table` names
@@ -163,7 +162,6 @@ function mountPane(pane) {
     pane.body.append(chartEl);
     pane.inst = def.mount(chartEl);
     buildControls(pane, () => reloadPane(pane));
-    applyScopeFilters(pane);
     pane.inst.setData(def.data(pane.filters));
     pane.refreshPager();
   } else {
@@ -234,7 +232,7 @@ function makePane() {
     // same year across views is the common case. Table panes get a
     // fresh {q} filter shape instead.
     const keepYear = pane.filters && 'year' in pane.filters
-      ? pane.filters.year : 'all';
+      ? pane.filters.year : DEFAULT_SCOPE;
     pane.filters = isChart(pane.defId) ? freshFilters(keepYear) : {q: ''};
     mountPane(pane);
     refreshPickers();
@@ -360,7 +358,7 @@ function serialize() {
     const f = p.filters, t = [];
     if (isChart(p.defId)) {
       const c = f.country ?? {codes: new Set(), negate: false};
-      if (f.year && f.year !== 'all') t.push('y' + f.year);
+      if (f.year && f.year !== DEFAULT_SCOPE) t.push('y' + f.year);
       if (c.codes.size || c.negate)
         t.push('c' + (c.negate ? '!' : '') + encList([...c.codes].sort()));
       if (f.successOnly) t.push('so');
@@ -465,7 +463,7 @@ function applyState(s) {
   panes.forEach((p, i) => {
     p.defId = s.views[i].v;
     p.filters = isChart(p.defId)
-      ? Object.assign(freshFilters('all'), s.views[i].f)
+      ? Object.assign(freshFilters(DEFAULT_SCOPE), s.views[i].f)
       : {q: '', ...s.views[i].f};
     mountPane(p);
   });
