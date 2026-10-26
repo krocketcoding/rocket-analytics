@@ -1,8 +1,9 @@
 # Rocket Analytics
 
-A vibe coded rocket launch analytics dashboard. Implemented in Python, it queries the
-[Launch Library 2](https://thespacedevs.com/llapi) API and builds static HTML using Jinja2. Hosted on GitHub Pages and
-automatically updated via GitHub Actions every 6 hours.
+A vibe coded rocket launch analytics dashboard. Python fetches launch data from the
+[Launch Library 2](https://thespacedevs.com/llapi) API and normalizes it into one dataset; everything you see —
+charts, tables, modals — is rendered in JavaScript from that data, while Jinja is only a small page shell. Hosted
+on GitHub Pages and automatically updated via GitHub Actions every 6 hours.
 
 [See it here](https://krocketcoding.github.io/rocket-analytics/)
 
@@ -14,7 +15,7 @@ python main.py                    # builds into site/
 python main.py --refresh          # ignore the API response cache
 python main.py --max-cache-age 5  # refetch if the cache is over 5 hours old
 python -m unittest discover tests # run the Python unit tests
-node --test                       # run the JS stats invariants (needs a prior build)
+node --test                       # JS tests: stats invariants + script bundle check (needs a prior build)
 ```
 
 Fetched launch data is cached in `launch-cache.json` (git ignored) and reused regardless of age unless `--refresh` or
@@ -96,15 +97,27 @@ charts — happens in JavaScript from that single block; Jinja only renders the 
   everything inlined.
 - `templates/index.html` — the site's markup as one minimal Jinja shell: head, header, `#workspace`, footer, the
   `data` JSON block, and the script tags. All view markup is built in JavaScript.
-- `static/` — the stylesheet, the page's JavaScript (`app.js` for the dataset parse, detail modals — whose update
-  text loads lazily from `launch-updates.js` online — and shared helpers; `stats.js` computes the chart aggregations
-  in the browser — per-year launch counts by rocket, rocket family, manufacturer, country, and launch site, split
-  into orbital, suborbital, and failed segments, with site and family rows keeping a nested per-rocket tally so the
-  rocket filter and variant stacking can re-slice them; `tables.js` for the table views and their CSV export; the
-  chart code split across `chart-factories.js` for Chart.js factories, `chart-defs.js` for the chart registry, and
-  `charts.js` for the per-pane filter controls; and `workspace.js` for the two-pane workspace — view pickers,
-  divider drag, maximize, PNG/CSV export, and URL/localStorage persistence), and a vendored Chart.js — copied into
-  `site/` verbatim and inlined for the offline build.
+- `static/` — front-end code and assets, copied into `site/` verbatim and inlined for the offline build:
+  - `style.css` — the whole stylesheet.
+  - `app.js` — parses the dataset, builds and drives the detail modals (update text loads lazily from
+    `launch-updates.js` online), and holds the shared formatting helpers.
+  - `stats.js` — computes the chart aggregations in the browser: per-year launch counts by rocket, rocket family,
+    manufacturer, country, and launch site, split into orbital, suborbital, and failed segments, with site and
+    family rows keeping a nested per-rocket tally so the rocket filter and variant stacking can re-slice them.
+  - `chart-factories.js` — the Chart.js factories and the chart view contract (page, pageCount, setPage, setData).
+  - `chart-defs.js` — the CHART_DEFS registry and its data-slicing helpers.
+  - `charts.js` — the per-pane filter controls (year scope, country/rocket/entity popovers, toggles) and pager.
+  - `tables.js` — the table views and their CSV export (one column spec drives both).
+  - `workspace.js` — the two-pane workspace: view pickers, divider drag, maximize, PNG/CSV export, and
+    URL/localStorage persistence.
+  - `chart-library.min.js` — vendored Chart.js.
+- `tests/` — the test suites:
+  - `test_dataset.py` — dataset invariants against the real launch cache (references, orphans, offline scrub,
+    update splitting).
+  - `test_helpers.py` — unit tests for the small helpers: `drop_empty`, `pick`/`pull`, `link_details`, cache
+    load/save, and API retry behavior.
+  - `stats.test.js` — Node test asserting the chart-stat invariants on the built `site/index.html`.
+  - `scripts.test.js` — Node test concatenating the classic scripts to catch top-level name collisions.
 - `api-examples/` — sample API responses. Open these to see the raw shape of a launch record before `dataset.py`
   normalizes it.
 

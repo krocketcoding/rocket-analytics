@@ -34,7 +34,7 @@ const launchCols = withStatus => [
     html: d => {
       const s = DATA.statuses[d.status_id];
       const cls = (s?.abbrev || 'tbd').toLowerCase().replaceAll(' ', '-');
-      return `<span class="status status-${cls}">${esc(s?.name || 'Unknown')}</span>`;
+      return `<span class="status status-${esc(cls)}">${esc(s?.name || 'Unknown')}</span>`;
     },
   }] : []),
 ];
@@ -112,8 +112,8 @@ function renderTable(pane) {
       return `<th${sortable}${dir}>${c.headHtml || esc(c.head)}</th>`;
     }).join('')}</tr></thead><tbody>${spec.rows(pane).map(r => {
       const attrs = r.set === 'rockets'
-        ? `data-set="rockets" data-id="${esc(String(r.key))}"`
-        : `data-set="${r.set}" data-idx="${r.key}"`;
+        ? `data-set="rockets" data-id="${esc(String(r.key))}" tabindex="0"`
+        : `data-set="${r.set}" data-idx="${r.key}" tabindex="0"`;
       return `<tr ${attrs}>${spec.cols.map(c =>
         `<td${c.net ? ` data-net="${esc(r.rec.net || '')}"` : ''}>${c.html ? c.html(r.rec) : esc(c.text(r.rec))}</td>`
       ).join('')}</tr>`;

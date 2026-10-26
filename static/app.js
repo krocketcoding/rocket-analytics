@@ -26,7 +26,10 @@ const fmtLocal = s => s ? new Date(s)
   .toLocaleString(undefined, {dateStyle: 'medium', timeStyle: 'short'}) : null;
 const num = (v, unit) => v != null ? Number(v).toLocaleString() + (unit ? ' ' + unit : '') : null;
 const yesNo = v => v == null ? null : (v ? 'Yes' : 'No');
-const extLink = (label, url) => url
+// Only http(s) URLs become links — anything else (javascript:, data:)
+// is dropped rather than escaped into an href.
+const isWebUrl = url => /^https?:\/\//i.test(url || '');
+const extLink = (label, url) => isWebUrl(url)
   ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(label)}</a>` : '';
 
 // ISO 8601 durations ("P3DT12H" as stored by the API) -> "3d 12h"
@@ -131,7 +134,7 @@ const entityLinks = e => [['Info', e && e.info_url], ['Wiki', e && e.wiki_url]];
 
 function entityBody(e, fieldDefs, links) {
   if (!e || !e.name) return '';
-  const linkHtml = links.filter(([, u]) => u)
+  const linkHtml = links.filter(([, u]) => isWebUrl(u))
     .map(([l, u]) => extLink(l, u)).join(' ');
   const src = imgSrc(e.image);
   return (src ? `<img class="modal-image" src="${esc(src)}" alt="">` : '')
@@ -202,14 +205,21 @@ function loadUpdates() {
     };
     const s = document.createElement('script');
     s.src = DATA.meta.updates_src;
-    s.onerror = () => reject(new Error(`Failed to load ${s.src}`));
+    s.onerror = () => {
+      // Drop the failed tag and clear the memo so the next request
+      // retries with a fresh script element.
+      s.remove();
+      updatesPromise = null;
+      reject(new Error(`Failed to load ${s.src}`));
+    };
     document.body.append(s);
   });
   return updatesPromise;
 }
 // Fetch after the load event so it never competes with first paint; a
-// modal opened earlier starts it on demand via renderUpdates.
-addEventListener('load', () => loadUpdates());
+// modal opened earlier starts it on demand via renderUpdates. The catch
+// keeps a failed background fetch from logging an unhandled rejection.
+addEventListener('load', () => loadUpdates().catch(() => {}));
 
 // The launch the details modal is currently showing (null when closed).
 let openLaunch = null;
@@ -226,23 +236,27 @@ function renderUpdates(d) {
   // Not loaded yet — the promise re-renders only if the modal is still
   // open on this same launch by then.
   pane.innerHTML = '<p class="muted">Loading updates…</p>';
+  // Either outcome writes only while the modal is still open on this
+  // same launch — a late result must not land in another launch's tab.
   loadUpdates().then(() => {
     if (openLaunch === d) renderUpdates(d);
   }, () => {
-    pane.innerHTML = "<p class=\"muted\">Updates couldn't be loaded.</p>";
+    if (openLaunch === d)
+      pane.innerHTML = "<p class=\"muted\">Updates couldn't be loaded.</p>";
   });
 }
 
-const linkList = links => '<ul class="link-list">' + links.map(l =>
-  `<li>${extLink(l.label || l.url, l.url)}</li>`
-).join('') + '</ul>';
+const linkList = links => '<ul class="link-list">' + links
+  .filter(l => isWebUrl(l.url))
+  .map(l => `<li>${extLink(l.label || l.url, l.url)}</li>`)
+  .join('') + '</ul>';
 
 function renderLinks(d) {
   // The offline build strips all remote URLs and omits the Links tab
   // entirely — there is no pane to fill.
   if (DATA.meta.offline) return;
-  const launch = d.links || [];
-  const mission = d.mission_links || [];
+  const launch = (d.links || []).filter(l => isWebUrl(l.url));
+  const mission = (d.mission_links || []).filter(l => isWebUrl(l.url));
   $('mtab-links').innerHTML =
     (launch.length ? `<h3>Launch</h3>${linkList(launch)}` : '')
     + (mission.length ? `<h3>Mission</h3>${linkList(mission)}` : '')
@@ -255,20 +269,24 @@ function renderLinks(d) {
 // plus one .modal-pane per triple, the first active and visible, the
 // rest hidden.
 function makeModal(id, tabs) {
-  const el = document.createElement('div');
+  // A native <dialog>: showModal() gives a focus trap, an inert
+  // background, and Esc handling for free. aria-labelledby points at
+  // the title so screen readers announce it on open.
+  const el = document.createElement('dialog');
   el.id = id;
   el.className = 'modal';
-  el.hidden = true;
+  el.setAttribute('aria-labelledby', `${id}-name`);
   el.innerHTML = `
   <div class="modal-card">
     <button class="modal-close" aria-label="Close">&times;</button>
     <h2 id="${id}-name"></h2>
-    <div class="modal-tabs">
+    <div class="modal-tabs" role="tablist">
       ${tabs.map(([pane, label], i) =>
-        `<button class="tab${i === 0 ? ' active' : ''}" data-pane="${pane}">${label}</button>`).join('')}
+        `<button class="tab${i === 0 ? ' active' : ''}" role="tab" data-pane="${pane}"
+           aria-controls="${pane}" aria-selected="${i === 0}">${label}</button>`).join('')}
     </div>
     ${tabs.map(([pane, , html = ''], i) =>
-      `<div class="modal-pane" id="${pane}"${i ? ' hidden' : ''}>${html}</div>`).join('')}
+      `<div class="modal-pane" id="${pane}" role="tabpanel"${i ? ' hidden' : ''}>${html}</div>`).join('')}
   </div>`;
   document.body.append(el);
   return el;
@@ -301,7 +319,11 @@ function wireTabs(btnSel, paneSel, onSwitch) {
   const btns = [...document.querySelectorAll(btnSel)];
   const panes = [...document.querySelectorAll(paneSel)];
   const activate = btn => {
-    btns.forEach(b => b.classList.toggle('active', b === btn));
+    btns.forEach(b => {
+      const on = b === btn;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-selected', on);
+    });
     panes.forEach(p => p.hidden = p.id !== btn.dataset.pane);
     if (onSwitch) onSwitch(btn);
   };
@@ -314,14 +336,15 @@ const resetRocketTabs = wireTabs('#rocket-modal .modal-tabs .tab',
                                  '#rocket-modal .modal-pane');
 
 function showModal(m) {
-  m.hidden = false;
+  m.showModal();
+  // <dialog> doesn't stop the background from scrolling.
   document.body.style.overflow = 'hidden';
 }
 
+// Esc, the × button, and a backdrop click all funnel through the
+// dialog's 'close' event, which does the cleanup (see listeners below).
 function closeModal(m) {
-  m.hidden = true;
-  document.body.style.overflow = '';
-  if (m === modal) openLaunch = null;
+  m.close();
 }
 
 function openModal(d) {
@@ -372,19 +395,33 @@ function openRocketModal(id) {
 // The table views' data-set names map onto the launch lists they show.
 const LAUNCH_SETS = {upcoming: DATA.upcoming, past: DATA.previous};
 
-// Row clicks open the matching modal; Esc, backdrop, and × close them.
-document.querySelector('main').addEventListener('click', e => {
-  const tr = e.target.closest('tr[data-set]');
-  if (!tr) return;
+function openRow(tr) {
   if (tr.dataset.set === 'rockets') openRocketModal(tr.dataset.id);
   else openModal(LAUNCH_SETS[tr.dataset.set][+tr.dataset.idx]);
+}
+
+// Row clicks — and Enter/Space on a focused row — open the matching
+// modal. Esc is handled natively by <dialog>; × and backdrop close below.
+const mainEl = document.querySelector('main');
+mainEl.addEventListener('click', e => {
+  const tr = e.target.closest('tr[data-set]');
+  if (tr) openRow(tr);
+});
+mainEl.addEventListener('keydown', e => {
+  const tr = e.target.closest('tr[data-set]');
+  if (!tr || (e.key !== 'Enter' && e.key !== ' ')) return;
+  e.preventDefault();   // keep Space from scrolling the page
+  openRow(tr);
 });
 [modal, rocketModal].forEach(m => {
   m.querySelector('.modal-close')
-    .addEventListener('click', () => closeModal(m));
-  m.addEventListener('click', e => { if (e.target === m) closeModal(m); });
-});
-document.addEventListener('keydown', e => {
-  if (e.key !== 'Escape') return;
-  [modal, rocketModal].forEach(closeModal);
+    .addEventListener('click', () => m.close());
+  // The dialog fills the viewport, so a click that lands on the dialog
+  // element itself is a backdrop click.
+  m.addEventListener('click', e => { if (e.target === m) m.close(); });
+  // Esc, ×, and backdrop all end here — one place for close cleanup.
+  m.addEventListener('close', () => {
+    document.body.style.overflow = '';
+    if (m === modal) openLaunch = null;
+  });
 });

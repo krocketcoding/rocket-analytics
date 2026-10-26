@@ -6,6 +6,7 @@ PAST_LAUNCH_PAGES = 12
 UPCOMING_LAUNCH_PAGES = 2
 PAGE_SIZE = 100
 MAX_ATTEMPTS = 2
+RETRY_DELAY = 10  # seconds between retries of a transient API failure
 
 API_BASE = "https://ll.thespacedevs.com/2.2.0"
 # Paths anchor to the repo root so the build and tests work from any

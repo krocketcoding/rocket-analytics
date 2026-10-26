@@ -461,6 +461,12 @@ tbody tr:hover {
   background: var(--surface);
 }
 
+/* Focused table rows are keyboard-openable (Enter/Space) */
+tbody tr[data-set]:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: -2px;
+}
+
 .status {
   padding: 0.15rem 0.6rem;
   border-radius: 999px;
@@ -476,19 +482,31 @@ tbody tr:hover {
 
 /* Modal */
 
+/* <dialog> UA styles are neutralized into a transparent full-viewport
+   frame — the dim lives on ::backdrop, the card handles its own look.
+   The top layer makes a z-index unnecessary. */
 .modal {
-  align-items: center;
-  background: rgba(0, 0, 0, 0.65);
-  display: flex;
-  inset: 0;
-  justify-content: center;
+  background: transparent;
+  border: none;
+  color: inherit;
+  height: 100%;
+  margin: 0;
+  max-height: none;
+  max-width: none;
   padding: 1rem;
-  position: fixed;
-  z-index: 10;
+  width: 100%;
 }
 
-.modal[hidden] {
-  display: none;
+/* display:flex only while open — a closed dialog must be display:none
+   (the UA default), or it would block the page. */
+.modal[open] {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+}
+
+.modal::backdrop {
+  background: rgba(0, 0, 0, 0.65);
 }
 
 .modal-card {
