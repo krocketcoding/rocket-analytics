@@ -68,10 +68,7 @@ function computeStats(data) {
   // for the charts' country filters.
   const rocketCountries = {};
   const manufacturerCountries = {};
-  // Launch-site short name -> its country code and full location name.
-  // Air/sea "locations" ('Air launch to orbit', 'Sea Launch') carry the
-  // API's '???' code — legitimate here since they record real launches.
-  const siteCountries = {};
+  // Launch-site short name -> full location name, for tooltips.
   const siteNames = {};
   // Tally fetched launches per calendar year. Each year gets a
   // name -> category dict per chart grouping: rockets, manufacturers,
@@ -117,7 +114,6 @@ function computeStats(data) {
     if (location?.name) {
       const site = location.name.split(',')[0].trim();
       siteNames[site] = location.name;
-      if (location.country) siteCountries[site] = location.country;
       if (name) bump(siteCounts[site] ??= {}, name);
     }
   }
@@ -129,14 +125,11 @@ function computeStats(data) {
   if (data.meta.truncated) years = years.slice(0, -1);
 
   // Tooltip names for every code the chart can show, resolved once here
-  // so the axis labels can stay as the short codes. The union covers
-  // per-year country counts — including the dropped oldest year, whose
-  // codes may still appear as filter options.
-  const countryCodes = new Set([
-    ...Object.values(rocketCountries),
-    ...Object.values(manufacturerCountries),
-    ...Object.values(perYear).flatMap(y => Object.keys(y[2])),
-  ]);
+  // so the axis labels can stay as the short codes. Covers every code
+  // counted in the per-year tallies — including the dropped oldest
+  // year, whose codes may still appear as filter options.
+  const countryCodes = new Set(
+    Object.values(perYear).flatMap(y => Object.keys(y[2])));
 
   const yearly = {};
   for (const year of years) {
@@ -169,22 +162,21 @@ function computeStats(data) {
     // launch pad's: one rocket can fly from pads in several countries.
     if (manufacturer?.name) {
       const label = manufacturer.abbrev || manufacturer.name;
-      if (chartedMfrs.has(label)) {
-        manufacturerNames[label] = manufacturer.name;
-        if (manufacturer.country) manufacturerCountries[label] = manufacturer.country;
-      }
+      // manufacturerNames is already complete from the per-launch
+      // loop; this pass only fills the country filter map.
+      if (chartedMfrs.has(label) && manufacturer.country)
+        manufacturerCountries[label] = manufacturer.country;
     }
   }
 
   return {
     yearly,
-    manufacturer_names: manufacturerNames,
-    country_names: Object.fromEntries(
+    manufacturerNames,
+    countryNames: Object.fromEntries(
       [...countryCodes].map(code => [code, countryName(code)])),
-    rocket_countries: rocketCountries,
-    manufacturer_countries: manufacturerCountries,
-    site_countries: siteCountries,
-    site_names: siteNames,
+    rocketCountries,
+    manufacturerCountries,
+    siteNames,
   };
 }
 

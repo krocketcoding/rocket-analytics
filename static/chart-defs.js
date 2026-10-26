@@ -5,12 +5,11 @@
 // load order is JS_FILES in pipeline/config.py.
 // Scope lookup shared by chart defs: a year reads that year's bucket
 // (missing keys -> empty chart).
-const scopedData = yearKey => year => STATS.yearly[year]?.[yearKey] ?? {};
+const yearRows = (key, year) => STATS.yearly[year]?.[key] ?? {};
 
 // Entity pickers list everything chartable in the fetched window — the
 // union of yearly bucket keys, with a per-name launch total so a def's
 // defaultEntity can pick the most-launched entry.
-// A def's defaultEntity picks the most-launched thing in the window.
 const topWindowed = key =>
   Object.entries(windowTotals(key)).sort((a, b) => b[1] - a[1])[0]?.[0];
 
@@ -24,8 +23,8 @@ const windowTotals = key => {
 
 // Label -> country code maps from the stats build, one per grouping;
 // the right map is whichever resolves the chart's own labels.
-const ROCKET_COUNTRIES = STATS.rocket_countries || {};
-const MFR_COUNTRIES = STATS.manufacturer_countries || {};
+const ROCKET_COUNTRIES = STATS.rocketCountries;
+const MFR_COUNTRIES = STATS.manufacturerCountries;
 
 // Restrict a {name: counts} dataset to labels whose country is (or, when
 // negated, is not) among the selected codes. An empty selection filters
@@ -46,8 +45,9 @@ const donutSlices = (rows, successOnly) => Object.fromEntries(
 
 // Trend defs chart one series per selected entity (a rocket name,
 // manufacturer abbrev, or country code) as {entity: {year: count}},
-// re-sliced from that group's yearly buckets chronologically — yearly
-// keys arrive newest-first. `successOnly` drops the failed segment;
+// re-sliced from that group's yearly buckets chronologically — JS
+// orders the integer-like year keys ascending, so .sort() walks them
+// oldest to newest. `successOnly` drops the failed segment;
 // `cumulative` turns each series into a running total.
 const trendData = groupKey => s => {
   const out = {};
@@ -104,6 +104,43 @@ const familyRows = (rows, byVariant) => Object.fromEntries(
     return [fam, out];
   }));
 
+// Every charted grouping declared once: `key` is its yearly bucket,
+// `label`/`column` its UI names, `names` the optional tooltip map,
+// `countryMap` the label->code map a country filter offers, `entities`
+// the [value, label] pairs feeding the 'entity' popover (trends) or
+// 'rocket' filter (site charts), and `rows` the filter-state ->
+// {name: counts} mapping shared by its bar and donut views.
+const GROUPS = {
+  rocket:       {key: 'rockets', label: 'By rocket', column: 'Rocket', filters: ['country'], countryMap: ROCKET_COUNTRIES,
+                 rows: s => applyCountryFilter(yearRows('rockets', s.year), s.country, ROCKET_COUNTRIES)},
+  manufacturer: {key: 'manufacturers', label: 'By manufacturer', column: 'Manufacturer', names: STATS.manufacturerNames,
+                 filters: ['country'], countryMap: MFR_COUNTRIES, rows: s => applyCountryFilter(yearRows('manufacturers', s.year), s.country, MFR_COUNTRIES)},
+  country:      {key: 'countries', label: 'By country', column: 'Country', names: STATS.countryNames, filters: [],
+                 rows: s => yearRows('countries', s.year)},
+  // The 'rocket' filter re-aggregates a site's rows by which rockets
+  // flew from it.
+  site:         {key: 'sites', label: 'By launch site', column: 'Site', names: STATS.siteNames, filters: ['rocket'],
+                 entities: rocketEntities, rows: s => siteRows(yearRows('sites', s.year), s.rockets)},
+};
+
+// The three chart views a grouping supports share one def contract
+// (the comment on CHART_DEFS): Bars pages a stacked category chart,
+// Donut flattens rows to {label: count} slices, Trend charts one
+// series per entity pick.
+const barDef = g => ({label: g.label, kind: 'Bars', filters: ['year', ...g.filters], countryMap: g.countryMap,
+                      entities: g.entities, unit: 'launches', data: g.rows,
+                      mount: pane => stackedBarChart(pane.querySelector('canvas'), g.names)});
+const donutDef = g => ({label: g.label, kind: 'Donut', filters: ['year', ...g.filters, 'success'], countryMap: g.countryMap,
+                        entities: g.entities, data: s => donutSlices(g.rows(s), s.successOnly),
+                        mount: pane => donutChart(pane, g.names, g.column)});
+const trendDef = g => ({label: g.label, kind: 'Trend', filters: ['entity', 'success', 'cumulative'], unit: 'launches',
+                        // {entity: {year: count}} rows bound the shared axis on the largest
+                        // single point, not a row total.
+                        rowMax: series => Math.max(0, ...Object.values(series)),
+                        entities: () => entityOptions(Object.keys(windowTotals(g.key)).map(k => [k, g.names?.[k] || k])),
+                        defaultEntity: topWindowed(g.key), data: trendData(g.key),
+                        mount: pane => lineChart(pane.querySelector('canvas'), g.names)});
+
 // Registry of every chart a pane can show — workspace.js merges in the
 // table views to build the pickers. `kind` groups the picker's options
 // under an optgroup heading. Each def lists the filters it supports
@@ -118,128 +155,25 @@ const familyRows = (rows, byVariant) => Object.fromEntries(
 // popover (trends) or the 'rocket' filter (site charts) — and
 // `defaultEntity`, the trend picker's most-launched fallback.
 const CHART_DEFS = {
-  'by-rocket': {
-    label: 'By rocket',
-    kind: 'Bars',
-    filters: ['year', 'country'],
-    countryMap: ROCKET_COUNTRIES,
-    unit: 'launches',
-    data: s => applyCountryFilter(
-      scopedData('rockets')(s.year), s.country),
-    mount: pane => stackedBarChart(pane.querySelector('canvas')),
-  },
+  'by-rocket': barDef(GROUPS.rocket),
+  // The family chart's variant stacking is its own thing — it stays a
+  // hand-written def rather than a GROUPS entry.
   'by-rocket-family': {
     label: 'By rocket family',
     kind: 'Bars',
     filters: ['year', 'variant'],
     unit: 'launches',
-    data: s => familyRows(
-      scopedData('families')(s.year), s.variantStack),
+    data: s => familyRows(yearRows('families', s.year), s.variantStack),
     mount: pane => stackedBarChart(pane.querySelector('canvas')),
   },
-  'by-manufacturer': {
-    label: 'By manufacturer',
-    kind: 'Bars',
-    filters: ['year', 'country'],
-    countryMap: MFR_COUNTRIES,
-    unit: 'launches',
-    data: s => applyCountryFilter(
-      scopedData('manufacturers')(s.year), s.country,
-      MFR_COUNTRIES),
-    mount: pane => stackedBarChart(pane.querySelector('canvas'), STATS.manufacturer_names),
-  },
-  'by-country': {
-    label: 'By country',
-    kind: 'Bars',
-    filters: ['year'],
-    unit: 'launches',
-    data: s => scopedData('countries')(s.year),
-    mount: pane => stackedBarChart(pane.querySelector('canvas'), STATS.country_names),
-  },
-  // The 'rocket' filter re-aggregates a site's rows by which rockets
-  // flew from it.
-  'by-site': {
-    label: 'By launch site',
-    kind: 'Bars',
-    filters: ['year', 'rocket'],
-    unit: 'launches',
-    entities: rocketEntities,
-    data: s => siteRows(scopedData('sites')(s.year), s.rockets),
-    mount: pane => stackedBarChart(pane.querySelector('canvas'), STATS.site_names),
-  },
-  'by-rocket-donut': {
-    label: 'By rocket',
-    kind: 'Donut',
-    filters: ['year', 'country', 'success'],
-    countryMap: ROCKET_COUNTRIES,
-    data: s => applyCountryFilter(donutSlices(
-      scopedData('rockets')(s.year), s.successOnly), s.country),
-    mount: pane => donutChart(pane, null, 'Rocket'),
-  },
-  'by-manufacturer-donut': {
-    label: 'By manufacturer',
-    kind: 'Donut',
-    filters: ['year', 'country', 'success'],
-    countryMap: MFR_COUNTRIES,
-    data: s => applyCountryFilter(donutSlices(
-      scopedData('manufacturers')(s.year), s.successOnly),
-      s.country, MFR_COUNTRIES),
-    mount: pane => donutChart(pane, STATS.manufacturer_names, 'Manufacturer'),
-  },
-  'by-country-donut': {
-    label: 'By country',
-    kind: 'Donut',
-    filters: ['year', 'success'],
-    data: s => donutSlices(
-      scopedData('countries')(s.year), s.successOnly),
-    mount: pane => donutChart(pane, STATS.country_names, 'Country'),
-  },
-  'by-site-donut': {
-    label: 'By launch site',
-    kind: 'Donut',
-    filters: ['year', 'rocket', 'success'],
-    entities: rocketEntities,
-    data: s => donutSlices(
-        siteRows(scopedData('sites')(s.year), s.rockets), s.successOnly),
-    mount: pane => donutChart(pane, STATS.site_names, 'Site'),
-  },
-  'by-rocket-trend': {
-    label: 'By rocket',
-    kind: 'Trend',
-    filters: ['entity', 'success', 'cumulative'],
-    unit: 'launches',
-    // {entity: {year: count}} rows bound the shared axis on the largest
-    // single point, not a row total.
-    rowMax: series => Math.max(0, ...Object.values(series)),
-    entities: rocketEntities,
-    defaultEntity: topWindowed('rockets'),
-    data: trendData('rockets'),
-    mount: pane => lineChart(pane.querySelector('canvas')),
-  },
-  'by-manufacturer-trend': {
-    label: 'By manufacturer',
-    kind: 'Trend',
-    filters: ['entity', 'success', 'cumulative'],
-    unit: 'launches',
-    rowMax: series => Math.max(0, ...Object.values(series)),
-    entities: () => entityOptions(Object.keys(windowTotals('manufacturers'))
-      .map(k => [k, STATS.manufacturer_names[k] || k])),
-    defaultEntity: topWindowed('manufacturers'),
-    data: trendData('manufacturers'),
-    mount: pane =>
-      lineChart(pane.querySelector('canvas'), STATS.manufacturer_names),
-  },
-  'by-country-trend': {
-    label: 'By country',
-    kind: 'Trend',
-    filters: ['entity', 'success', 'cumulative'],
-    unit: 'launches',
-    rowMax: series => Math.max(0, ...Object.values(series)),
-    entities: () => entityOptions(Object.keys(windowTotals('countries'))
-      .map(k => [k, STATS.country_names[k] || k])),
-    defaultEntity: topWindowed('countries'),
-    data: trendData('countries'),
-    mount: pane =>
-      lineChart(pane.querySelector('canvas'), STATS.country_names),
-  },
+  'by-manufacturer': barDef(GROUPS.manufacturer),
+  'by-country': barDef(GROUPS.country),
+  'by-site': barDef(GROUPS.site),
+  'by-rocket-donut': donutDef(GROUPS.rocket),
+  'by-manufacturer-donut': donutDef(GROUPS.manufacturer),
+  'by-country-donut': donutDef(GROUPS.country),
+  'by-site-donut': donutDef(GROUPS.site),
+  'by-rocket-trend': trendDef(GROUPS.rocket),
+  'by-manufacturer-trend': trendDef(GROUPS.manufacturer),
+  'by-country-trend': trendDef(GROUPS.country),
 };

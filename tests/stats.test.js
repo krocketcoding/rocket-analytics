@@ -101,10 +101,10 @@ test('country filter keys can chart', t => {
     .flatMap(b => Object.keys(b.rockets)));
   const chartedMfrs = new Set(Object.values(STATS.yearly)
     .flatMap(b => Object.keys(b.manufacturers)));
-  for (const name of Object.keys(STATS.rocket_countries))
-    assert.ok(charted.has(name), `rocket_countries has uncharted ${name}`);
-  for (const name of Object.keys(STATS.manufacturer_countries))
-    assert.ok(chartedMfrs.has(name), `manufacturer_countries has uncharted ${name}`);
+  for (const name of Object.keys(STATS.rocketCountries))
+    assert.ok(charted.has(name), `rocketCountries has uncharted ${name}`);
+  for (const name of Object.keys(STATS.manufacturerCountries))
+    assert.ok(chartedMfrs.has(name), `manufacturerCountries has uncharted ${name}`);
 });
 
 test('oldest year dropped at page cap', t => {
@@ -121,13 +121,10 @@ test('oldest year dropped at page cap', t => {
 
 test('site maps cover chart labels', t => {
   needSite(t);
-  // Every launch site a chart can label resolves to a full name and a
-  // country code ('???' counts — it's the air/sea code).
+  // Every launch site a chart can label resolves to a full name.
   const {STATS} = loaded;
   const sites = new Set(Object.values(STATS.yearly)
     .flatMap(b => Object.keys(b.sites)));
-  for (const site of sites) {
-    assert.ok(site in STATS.site_names, `${site} missing from site_names`);
-    assert.ok(site in STATS.site_countries, `${site} missing from site_countries`);
-  }
+  for (const site of sites)
+    assert.ok(site in STATS.siteNames, `${site} missing from siteNames`);
 });

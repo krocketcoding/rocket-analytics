@@ -3,14 +3,18 @@
 // rocket sort wiring. A classic script sharing DATA/esc/fmtLocal/num
 // from app.js; load order is JS_FILES in pipeline/config.py.
 //
-// A column spec is {head, headHtml?, sort?, net?, html(rec), csv(rec)}:
-// `html` feeds the <td>, `csv` the export, `sort` names the record key
-// a header click can order by (rockets only), `headHtml` overrides the
-// header text when it needs markup, and `net` marks the date column so
-// it keeps the data-net attribute the stylesheet's nowrap rule hooks.
+// A column spec is {head, headHtml?, sort?, net?, text(rec), html?(rec)}:
+// `text` is the cell's plain value — it feeds the CSV directly and is
+// HTML-escaped for the <td>; `html` overrides the cell markup when the
+// value needs markup (the two-line date, the status badge); `sort`
+// names the record key a header click can order by (rockets only);
+// `headHtml` overrides the header text when it needs markup; `net`
+// marks the date column so it keeps the data-net attribute the
+// stylesheet's nowrap rule hooks.
 
 const launchCols = withStatus => [
   {head: 'Date', net: true,
+   text: d => fmtLocal(d.net) || '',
    // Local date over local time on two lines; falls back to the raw
    // net string when it can't be parsed.
    html: d => {
@@ -18,39 +22,33 @@ const launchCols = withStatus => [
      return isNaN(t) ? esc(d.net || '')
        : esc(t.toLocaleDateString(undefined, {dateStyle: 'medium'})) + '<br>'
        + esc(t.toLocaleTimeString(undefined, {timeStyle: 'short'}));
-   },
-   csv: d => fmtLocal(d.net) || ''},
-  {head: 'Mission', html: d => esc(d.name || ''), csv: d => d.name || ''},
+   }},
+  {head: 'Mission', text: d => d.name || ''},
   {head: 'Provider',
-   html: d => esc(DATA.agencies[d.provider_id]?.name ?? '—'),
-   csv: d => DATA.agencies[d.provider_id]?.name ?? '—'},
+   text: d => DATA.agencies[d.provider_id]?.name ?? '—'},
   {head: 'Pad',
-   html: d => esc(DATA.pads[d.pad_id]?.name ?? '—'),
-   csv: d => DATA.pads[d.pad_id]?.name ?? '—'},
+   text: d => DATA.pads[d.pad_id]?.name ?? '—'},
   ...(withStatus ? [{
     head: 'Status',
+    text: d => DATA.statuses[d.status_id]?.name || 'Unknown',
     html: d => {
       const s = DATA.statuses[d.status_id];
       const cls = (s?.abbrev || 'tbd').toLowerCase().replaceAll(' ', '-');
       return `<span class="status status-${cls}">${esc(s?.name || 'Unknown')}</span>`;
     },
-    csv: d => DATA.statuses[d.status_id]?.name || 'Unknown',
   }] : []),
 ];
 
 const rocketCols = [
-  {head: 'Name', html: r => esc(r.name || '—'), csv: r => r.name || '—'},
+  {head: 'Name', text: r => r.name || '—'},
   // The manufacturer is a row in the merged agencies table.
   {head: 'Provider',
-   html: r => esc(DATA.agencies[r.manufacturer_id]?.name || '—'),
-   csv: r => DATA.agencies[r.manufacturer_id]?.name || '—'},
+   text: r => DATA.agencies[r.manufacturer_id]?.name || '—'},
   {head: 'LEO capacity', sort: 'leo_capacity',
-   html: r => r.leo_capacity != null ? num(r.leo_capacity, 'kg') : '—',
-   csv: r => r.leo_capacity != null ? num(r.leo_capacity, 'kg') : '—'},
+   text: r => r.leo_capacity != null ? num(r.leo_capacity, 'kg') : '—'},
   {head: 'Successful / attempted', headHtml: 'Successful /<br>attempted',
    sort: 'launches',
-   html: r => r.launches != null ? `${r.successful || 0} / ${r.launches}` : '—',
-   csv: r => r.launches != null ? `${r.successful || 0} / ${r.launches}` : '—'},
+   text: r => r.launches != null ? `${r.successful || 0} / ${r.launches}` : '—'},
 ];
 
 // Default rocket order: launch count, then LEO capacity, then name
@@ -66,7 +64,7 @@ const defaultRocketRows = () =>
 // deterministically; unknowns stay at the bottom in either direction.
 function rocketRows(pane) {
   const rows = defaultRocketRows();
-  const key = pane?.filters.sort;
+  const key = pane.filters.sort;
   if (!key) return rows;
   const mul = (pane.filters.dir || 'desc') === 'desc' ? 1 : -1;
   return rows.sort((a, b) => {
@@ -104,8 +102,8 @@ const TABLE_SPECS = {
 // different sorts in the two panes.
 function renderTable(pane) {
   const spec = TABLE_SPECS[pane.defId];
-  const sortKey = pane?.filters.sort || 'launches';
-  const sortDir = pane?.filters.dir || 'desc';
+  const sortKey = pane.filters.sort || 'launches';
+  const sortDir = pane.filters.dir || 'desc';
   const wrap = document.createElement('div');
   wrap.className = 'table-wrap';
   wrap.innerHTML = `<table><thead><tr>${spec.cols.map(c => {
@@ -117,10 +115,10 @@ function renderTable(pane) {
         ? `data-set="rockets" data-id="${esc(String(r.key))}"`
         : `data-set="${r.set}" data-idx="${r.key}"`;
       return `<tr ${attrs}>${spec.cols.map(c =>
-        `<td${c.net ? ` data-net="${esc(r.rec.net || '')}"` : ''}>${c.html(r.rec)}</td>`
+        `<td${c.net ? ` data-net="${esc(r.rec.net || '')}"` : ''}>${c.html ? c.html(r.rec) : esc(c.text(r.rec))}</td>`
       ).join('')}</tr>`;
     }).join('')}</tbody></table><p class="table-note">${esc(spec.note())}</p>`;
-  if (pane && pane.defId === 'rockets')
+  if (pane.defId === 'rockets')
     wrap.querySelectorAll('th.sortable').forEach(th =>
       th.addEventListener('click', () => sortPaneTable(pane, th.dataset.sort)));
   return wrap;
@@ -147,6 +145,6 @@ const csvCell = v => `"${String(v).replaceAll('"', '""')}"`;
 function tableCsv(pane) {
   const spec = TABLE_SPECS[pane.defId];
   const rows = [spec.cols.map(c => c.head),
-    ...spec.rows(pane).map(r => spec.cols.map(c => c.csv(r.rec)))];
+    ...spec.rows(pane).map(r => spec.cols.map(c => c.text(r.rec)))];
   return rows.map(r => r.map(csvCell).join(',')).join('\r\n');
 }

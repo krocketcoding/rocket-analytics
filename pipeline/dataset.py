@@ -77,8 +77,11 @@ def build_dataset(upcoming, previous, data_updated):
         for prog in launch.get("program") or []:
             if prog.get("id") is not None:
                 programs.setdefault(prog["id"], {"name": pick(prog, "name")})
-        updates = [pull(u, UPDATE_FIELDS) for u in launch.get("updates") or []]
+        # Pull each update and register its author's avatar in the same
+        # pass — the avatar interns once per author into images.
+        updates = []
         for u in launch.get("updates") or []:
+            updates.append(pull(u, UPDATE_FIELDS))
             if u.get("created_by") and u.get("profile_image"):
                 authors.setdefault(u["created_by"], {"image": img(u["profile_image"])})
 
@@ -105,8 +108,11 @@ def build_dataset(upcoming, previous, data_updated):
             "mission_links": link_details(mission.get("info_urls"), mission.get("vid_urls")),
         }
 
-    launches = {"upcoming": [launch_record(launch) for launch in upcoming],
-                "previous": [launch_record(launch) for launch in previous]}
+    # Build records before the entity tables — launch_record is what
+    # collects them. Upcoming first, so collection order (and thus image
+    # indices and table order) stays deterministic.
+    upcoming_records = [launch_record(launch) for launch in upcoming]
+    previous_records = [launch_record(launch) for launch in previous]
 
     def merged_agency(sources):
         """One agency row from several source sightings, first non-empty value per field."""
@@ -158,8 +164,8 @@ def build_dataset(upcoming, previous, data_updated):
     return drop_empty({
         "meta": meta,
         "images": images,
-        "upcoming": launches["upcoming"],
-        "previous": launches["previous"],
+        "upcoming": upcoming_records,
+        "previous": previous_records,
         "agencies": agencies,
         "rockets": rockets,
         "pads": pads,

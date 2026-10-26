@@ -591,14 +591,14 @@ tbody tr:hover {
   width: auto;
 }
 
-/* Country filter: button summarizes the live selection and opens a
-   checkbox popover below the pane head. */
+/* Checkbox pickers (country, rocket, entity): button summarizes the
+   live selection and opens a checkbox popover below the pane head. */
 
-.country-filter {
+.pick-filter {
   position: relative;
 }
 
-.country-filter .chart-pick {
+.pick-filter .chart-pick {
   max-width: 280px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -606,11 +606,11 @@ tbody tr:hover {
 }
 
 /* Accent outline while a selection is actually filtering the chart. */
-.country-filter.has-sel .chart-pick {
+.pick-filter.has-sel .chart-pick {
   box-shadow: inset 0 0 0 1px var(--accent-strong);
 }
 
-.country-pop {
+.pick-pop {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -630,11 +630,11 @@ tbody tr:hover {
   z-index: 5;
 }
 
-.country-pop[hidden] {
+.pick-pop[hidden] {
   display: none;
 }
 
-.country-pop-head {
+.pick-pop-head {
   align-items: center;
   color: var(--muted);
   display: flex;
@@ -642,7 +642,7 @@ tbody tr:hover {
   margin-bottom: 0.2rem;
 }
 
-.country-clear {
+.pick-reset {
   background: none;
   border: none;
   color: var(--muted);
@@ -651,7 +651,7 @@ tbody tr:hover {
   padding: 0;
 }
 
-.country-clear:hover {
+.pick-reset:hover {
   color: var(--text);
 }
 
@@ -675,7 +675,7 @@ tbody tr:hover {
   color: var(--dim);
 }
 
-.country-row {
+.pick-row {
   align-items: center;
   color: var(--text-soft);
   cursor: pointer;
@@ -686,11 +686,11 @@ tbody tr:hover {
 
 /* display:flex above would defeat the hidden attribute the popover
    filter box sets on non-matching rows. */
-.country-row[hidden] {
+.pick-row[hidden] {
   display: none;
 }
 
-.country-negate {
+.pick-negate {
   border-bottom: 1px solid var(--border);
   color: var(--muted);
   margin-bottom: 0.2rem;
@@ -970,7 +970,7 @@ tbody tr:hover {
     padding: 0.4rem 0.65rem;
   }
 
-  .country-filter .chart-pick {
+  .pick-filter .chart-pick {
     max-width: 45vw;
   }
 
@@ -1016,13 +1016,13 @@ tbody tr:hover {
   /* (Donut stacking is handled by .pane.narrow — real pane width, not
      the viewport breakpoint.) */
 
-  /* The country popover stays inside the viewport */
-  .country-pop {
+  /* Picker popovers stay inside the viewport */
+  .pick-pop {
     max-width: 80vw;
   }
 
   /* Roomier touch targets on the picker rows */
-  .country-row {
+  .pick-row {
     padding: 0.15rem 0;
   }
 

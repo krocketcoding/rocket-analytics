@@ -9,14 +9,13 @@ render. Run from the repo root with: python -m unittest discover tests
 import copy
 import json
 import unittest
-from pathlib import Path
 from unittest import mock
 
-from pipeline.config import PAGE_SIZE, PAST_LAUNCH_PAGES
+from pipeline.config import LAUNCH_CACHE_FILE, PAGE_SIZE, PAST_LAUNCH_PAGES
 from pipeline.dataset import build_dataset, split_updates
 from pipeline.offline_bundle import offline_dataset
 
-CACHE = Path(__file__).resolve().parents[1] / "launch-cache.json"
+CACHE = LAUNCH_CACHE_FILE
 
 # Remote link fields the offline variant scrubs out of every record.
 URL_FIELDS = {"info_url", "wiki_url", "map_url", "links", "mission_links"}

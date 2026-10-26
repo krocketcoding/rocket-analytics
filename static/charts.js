@@ -29,16 +29,16 @@ function makeScopeSeg(scope, onChange, scopes) {
   return el;
 }
 
-// Scopes every chart offers: the fetched years, newest first —
-// STATS.yearly serializes with sorted keys (ascending), so a reverse
-// puts the newest year at the front where the seg leads.
+// Scopes every chart offers: the fetched years, newest first — JS
+// orders the integer-like year keys of STATS.yearly ascending, so a
+// reverse puts the newest year at the front where the seg leads.
 const ALL_SCOPES = Object.keys(STATS.yearly).reverse();
 // The default and fallback scope is the newest year.
 const DEFAULT_SCOPE = ALL_SCOPES[0];
 
-// Search box at the top of a .country-pop: typing narrows the option
-// rows by label text. The country picker's negate row is a mode
-// toggle, not an option, so it's exempt from the filter.
+// Search box at the top of a .pick-pop: typing narrows the option rows
+// by label text. Extra rows (the country picker's negate toggle) are
+// mode controls, not options, so they're exempt from the filter.
 function addPopSearch(pop) {
   const input = document.createElement('input');
   input.type = 'search';
@@ -46,7 +46,7 @@ function addPopSearch(pop) {
   input.placeholder = 'Filter…';
   input.addEventListener('input', () => {
     const q = input.value.trim().toLowerCase();
-    pop.querySelectorAll('.country-row:not(.country-negate)')
+    pop.querySelectorAll('.pick-row:not(.pick-negate)')
       .forEach(row => {
         row.hidden = q !== '' && !row.textContent.toLowerCase().includes(q);
       });
@@ -55,81 +55,77 @@ function addPopSearch(pop) {
   return input;
 }
 
-// Multi-select country picker with an Exclude toggle: a button opens a
-// checkbox list so a dozen-plus options don't crowd the pane header.
-// The button summarizes the live selection ("Country: not USA, CHN" /
-// "Country: all but 5") and carries an accent while a filter is
-// applied. Mutates sel ({codes, negate}) in place, then fires onChange.
-// `map` (label -> code, from the def's countryMap) decides which codes
-// are worth listing — only ones that can appear among this grouping.
-function makeCountryFilter(sel, onChange, map) {
+// Checkbox-popover factory shared by the country, rocket, and entity
+// pickers: a button that summarizes live state and opens a searchable
+// checkbox list, plus a reset button. opts:
+//   title      popover heading
+//   resetLabel reset button text ('Clear' by default)
+//   options    [value, label] pairs, one checkbox row each
+//   sel        Set the checkboxes mutate in place
+//   summary()  -> {text, title?} for the button
+//   active()   -> bool, whether the button shows the has-sel accent
+//   onChange   fired after any state change
+//   reset()    mutates state, returns whether anything changed — the
+//              checkboxes re-sync to sel and emit fires only then
+//   keepOne    the last checked box refuses to uncheck (trend charts
+//              would render blank with no series)
+//   extraRows  rows inserted between the search box and the options —
+//              an array, or a function of emit() for rows that fire
+//              changes themselves (the country picker's negate toggle)
+function makeCheckPopover(opts) {
+  const {title, resetLabel = 'Clear', options, sel, summary, active,
+         onChange, reset, keepOne = false, extraRows = []} = opts;
   const wrap = document.createElement('div');
-  wrap.className = 'country-filter';
+  wrap.className = 'pick-filter';
   const btn = document.createElement('button');
   btn.className = 'chart-pick';
   btn.type = 'button';
   const pop = document.createElement('div');
-  pop.className = 'country-pop';
+  pop.className = 'pick-pop';
   pop.hidden = true;
   const label = () => {
-    const picked = [...sel.codes].sort();
-    const n = picked.length;
-    btn.textContent = !n ? 'Country: all'
-      : n <= 3 ? `Country: ${sel.negate ? 'not ' : ''}${picked.join(', ')}`
-      : `Country: ${sel.negate ? 'all but ' : ''}${n}`;
-    btn.title = btn.textContent;
-    wrap.classList.toggle('has-sel', n > 0);
+    const s = summary();
+    btn.textContent = s.text;
+    btn.title = s.title ?? s.text;
+    wrap.classList.toggle('has-sel', active());
   };
   const emit = () => { label(); onChange(); };
   const head = document.createElement('div');
-  head.className = 'country-pop-head';
+  head.className = 'pick-pop-head';
   const clear = document.createElement('button');
-  clear.className = 'country-clear';
+  clear.className = 'pick-reset';
   clear.type = 'button';
-  clear.textContent = 'Clear';
-  head.append('Countries', clear);
+  clear.textContent = resetLabel;
+  head.append(title, clear);
   pop.append(head);
   const search = addPopSearch(pop);
-  const negRow = document.createElement('label');
-  negRow.className = 'country-row country-negate';
-  const negCb = document.createElement('input');
-  negCb.type = 'checkbox';
-  negCb.checked = sel.negate;
-  negCb.addEventListener('change', () => {
-    sel.negate = negCb.checked;
-    emit();
-  });
-  negRow.append(negCb, ' Exclude selected');
-  pop.append(negRow);
-  // Only codes that actually appear among this grouping are worth
-  // listing; names come from the stats build's country_names map.
-  const codes = [...new Set(Object.values(map))]
-    .sort((a, b) => (STATS.country_names[a] || a)
-      .localeCompare(STATS.country_names[b] || b));
-  const countryCbs = [];
-  for (const code of codes) {
+  pop.append(...(typeof extraRows === 'function' ? extraRows(emit) : extraRows));
+  const cbs = [];
+  for (const [v, name] of options) {
     const row = document.createElement('label');
-    row.className = 'country-row';
+    row.className = 'pick-row';
     const cb = document.createElement('input');
     cb.type = 'checkbox';
-    cb.checked = sel.codes.has(code);
+    cb.checked = sel.has(v);
     cb.addEventListener('change', () => {
-      cb.checked ? sel.codes.add(code) : sel.codes.delete(code);
+      if (keepOne && !cb.checked && sel.size === 1) {
+        cb.checked = true;
+        return;
+      }
+      cb.checked ? sel.add(v) : sel.delete(v);
       emit();
     });
-    row.append(cb, STATS.country_names[code] || code);
+    row.append(cb, name);
     pop.append(row);
-    countryCbs.push(cb);
+    cbs.push([v, cb]);
   }
-  // Clear resets the whole filter — selections and exclude mode. It
-  // drives the checkboxes by reference: querying .country-row inputs
-  // would also hit the negate box and leave it desynced from sel.negate.
+  // Reset mutates via the caller's closure; on a real change every
+  // option checkbox re-syncs to sel. Extra-row checkboxes (the negate
+  // toggle) sync inside their own reset closure instead — a blanket
+  // .pick-row query would desync them.
   clear.addEventListener('click', () => {
-    if (!sel.codes.size && !sel.negate) return;
-    sel.codes.clear();
-    sel.negate = false;
-    negCb.checked = false;
-    countryCbs.forEach(cb => { cb.checked = false; });
+    if (!reset()) return;
+    cbs.forEach(([v, cb]) => { cb.checked = sel.has(v); });
     emit();
   });
   btn.addEventListener('click', () => {
@@ -141,76 +137,91 @@ function makeCountryFilter(sel, onChange, map) {
   return wrap;
 }
 
+// Multi-select country picker with an Exclude toggle. Mutates sel
+// ({codes, negate}) in place, then fires onChange. `map` (label ->
+// code, from the def's countryMap) decides which codes are worth
+// listing — only ones that can appear among this grouping.
+function makeCountryFilter(sel, onChange, map) {
+  // The Exclude row is a mode toggle, not an option, so it rides in
+  // extraRows — as a function, since its checkbox needs the emit the
+  // popover creates.
+  const negRow = document.createElement('label');
+  negRow.className = 'pick-row pick-negate';
+  const negCb = document.createElement('input');
+  negCb.type = 'checkbox';
+  negCb.checked = sel.negate;
+  negRow.append(negCb, ' Exclude selected');
+  // Only codes that actually appear among this grouping are worth
+  // listing; names come from the stats build's country names map.
+  const codes = [...new Set(Object.values(map))]
+    .sort((a, b) => (STATS.countryNames[a] || a)
+      .localeCompare(STATS.countryNames[b] || b));
+  return makeCheckPopover({
+    title: 'Countries',
+    options: codes.map(code => [code, STATS.countryNames[code] || code]),
+    sel: sel.codes,
+    summary: () => {
+      const picked = [...sel.codes].sort();
+      const n = picked.length;
+      const text = !n ? 'Country: all'
+        : n <= 3 ? `Country: ${sel.negate ? 'not ' : ''}${picked.join(', ')}`
+        : `Country: ${sel.negate ? 'all but ' : ''}${n}`;
+      return {text};
+    },
+    active: () => sel.codes.size > 0,
+    onChange,
+    reset: () => {
+      // Selections and exclude mode clear together; nothing to do when
+      // already clear.
+      if (!sel.codes.size && !sel.negate) return false;
+      sel.codes.clear();
+      sel.negate = false;
+      negCb.checked = false;
+      return true;
+    },
+    extraRows: emit => {
+      negCb.addEventListener('change', () => {
+        sel.negate = negCb.checked;
+        emit();
+      });
+      return [negRow];
+    },
+  });
+}
+
 // Checkbox popover of the def's `entities` used as a row filter — e.g.
 // restrict a launch-site chart to selected rockets. Unlike the entity
 // picker an empty selection is legal and filters nothing ("Rocket:
-// all"). Mutates sel (a Set) in place, then fires onChange. Reuses the
-// country picker's popover styles.
+// all"). Mutates sel (a Set) in place, then fires onChange.
 function makeRocketFilter(sel, onChange, def) {
   const list = def.entities();
   const nameOf = new Map(list);
   // Prune picks that aren't in this def's list (stale from another def).
   const valid = new Set(list.map(([v]) => v));
   [...sel].forEach(v => { if (!valid.has(v)) sel.delete(v); });
-  const wrap = document.createElement('div');
-  wrap.className = 'country-filter';
-  const btn = document.createElement('button');
-  btn.className = 'chart-pick';
-  btn.type = 'button';
-  const pop = document.createElement('div');
-  pop.className = 'country-pop';
-  pop.hidden = true;
-  const label = () => {
-    const names = [...sel].map(v => nameOf.get(v));
-    btn.textContent = !names.length ? 'Rocket: all'
-      : names.length <= 3 ? `Rocket: ${names.join(', ')}`
-      : `Rocket: ${names.length}`;
-    btn.title = btn.textContent;
-    wrap.classList.toggle('has-sel', names.length > 0);
-  };
-  const emit = () => { label(); onChange(); };
-  const head = document.createElement('div');
-  head.className = 'country-pop-head';
-  const clear = document.createElement('button');
-  clear.className = 'country-clear';
-  clear.type = 'button';
-  clear.textContent = 'Clear';
-  head.append('Rockets', clear);
-  pop.append(head);
-  const search = addPopSearch(pop);
-  const cbs = [];
-  for (const [v, name] of list) {
-    const row = document.createElement('label');
-    row.className = 'country-row';
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = sel.has(v);
-    cb.addEventListener('change', () => {
-      cb.checked ? sel.add(v) : sel.delete(v);
-      emit();
-    });
-    row.append(cb, name);
-    pop.append(row);
-    cbs.push(cb);
-  }
-  clear.addEventListener('click', () => {
-    if (!sel.size) return;
-    sel.clear();
-    cbs.forEach(cb => { cb.checked = false; });
-    emit();
+  return makeCheckPopover({
+    title: 'Rockets',
+    options: list,
+    sel,
+    summary: () => {
+      const names = [...sel].map(v => nameOf.get(v));
+      return {text: !names.length ? 'Rocket: all'
+        : names.length <= 3 ? `Rocket: ${names.join(', ')}`
+        : `Rocket: ${names.length}`};
+    },
+    active: () => sel.size > 0,
+    onChange,
+    reset: () => {
+      if (!sel.size) return false;
+      sel.clear();
+      return true;
+    },
   });
-  btn.addEventListener('click', () => {
-    pop.hidden = !pop.hidden;
-    if (!pop.hidden) search.focus();
-  });
-  label();
-  wrap.append(btn, pop);
-  return wrap;
 }
 
-// A click anywhere outside an open country picker closes it.
+// A click anywhere outside an open picker popover closes it.
 document.addEventListener('click', e => {
-  document.querySelectorAll('.country-pop:not([hidden])').forEach(p => {
+  document.querySelectorAll('.pick-pop:not([hidden])').forEach(p => {
     if (!p.parentElement.contains(e.target)) p.hidden = true;
   });
 });
@@ -259,12 +270,11 @@ const FILTER_BUILDERS = {
   // 'By variant' swaps the rocket-family chart's stacking: each segment
   // is a rocket variant instead of a launch category.
   variant: makeToggle('By variant', 'variantStack'),
-  // Multi-select entity picker for trend charts: a button opens a
-  // checkbox popover (reuses the country picker's styles), one line
-  // per entity. filters.entities is a Set that can never empty — the
-  // last checked box refuses to uncheck — since a trend with no series
-  // would render blank. Stale picks from a previous def in this pane
-  // are pruned, falling back to the def's defaultEntity.
+  // Multi-select entity picker for trend charts: filters.entities is
+  // a Set that can never empty — a trend with no series would render
+  // blank — so keepOne refuses the last uncheck and Reset returns to
+  // the def's defaultEntity instead of clearing. Stale picks from a
+  // previous def in this pane are pruned first.
   entity: (slot, reload) => {
     const def = CHART_DEFS[slot.defId];
     const list = def.entities();
@@ -274,65 +284,21 @@ const FILTER_BUILDERS = {
       [...slot.filters.entities].filter(v => valid.has(v)));
     const fallback = () => def.defaultEntity ?? list[0][0];
     if (!sel.size) sel.add(fallback());
-    const wrap = document.createElement('div');
-    wrap.className = 'country-filter has-sel';
-    const btn = document.createElement('button');
-    btn.className = 'chart-pick';
-    btn.type = 'button';
-    const pop = document.createElement('div');
-    pop.className = 'country-pop';
-    pop.hidden = true;
-    const label = () => {
-      const names = [...sel].map(v => nameOf.get(v));
-      btn.textContent = names.length <= 2 ? names.join(', ')
-        : `${names[0]} +${names.length - 1}`;
-      btn.title = names.join(', ');
-    };
-    const emit = () => { label(); reload(); };
-    const head = document.createElement('div');
-    head.className = 'country-pop-head';
-    const reset = document.createElement('button');
-    reset.className = 'country-clear';
-    reset.type = 'button';
-    reset.textContent = 'Reset';
-    head.append('Entities', reset);
-    pop.append(head);
-    const search = addPopSearch(pop);
-    const cbs = new Map();
-    for (const [v, name] of list) {
-      const row = document.createElement('label');
-      row.className = 'country-row';
-      const cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.checked = sel.has(v);
-      cb.addEventListener('change', () => {
-        // The chart must keep at least one series.
-        if (!cb.checked && sel.size === 1) {
-          cb.checked = true;
-          return;
-        }
-        cb.checked ? sel.add(v) : sel.delete(v);
-        emit();
-      });
-      row.append(cb, name);
-      pop.append(row);
-      cbs.set(v, cb);
-    }
-    // Reset returns to just the def's default entity — the selection
-    // can't be empty, so 'Clear'-all semantics don't apply here.
-    reset.addEventListener('click', () => {
-      sel.clear();
-      sel.add(fallback());
-      cbs.forEach((cb, v) => { cb.checked = sel.has(v); });
-      emit();
+    return makeCheckPopover({
+      title: 'Entities', resetLabel: 'Reset', keepOne: true,
+      options: list, sel,
+      reset: () => { sel.clear(); sel.add(fallback()); return true; },
+      summary: () => {
+        const names = [...sel].map(v => nameOf.get(v));
+        return {text: names.length <= 2 ? names.join(', ')
+                  : `${names[0]} +${names.length - 1}`,
+                title: names.join(', ')};
+      },
+      // The picker always carries the accent — it always has a
+      // selection, since one is mandatory.
+      active: () => true,
+      onChange: reload,
     });
-    btn.addEventListener('click', () => {
-      pop.hidden = !pop.hidden;
-      if (!pop.hidden) search.focus();
-    });
-    label();
-    wrap.append(btn, pop);
-    return wrap;
   },
 };
 
