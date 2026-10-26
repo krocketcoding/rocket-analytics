@@ -40,7 +40,10 @@ const fmtDuration = s => {
     .filter(([v]) => v).map(([v, u]) => v + u).join(' ') || null;
 };
 
-$('data-updated').textContent = fmtLocal(DATA.meta.updated) || '';
+// The updated stamp renders twice — inline beside the header actions
+// and inside the info popover (the only place it lands on phones).
+document.querySelectorAll('.data-updated')
+  .forEach(el => el.textContent = fmtLocal(DATA.meta.updated) || '');
 
 // Render [label, value] pairs as <dt>/<dd>, skipping empty values
 const dlRows = pairs => pairs

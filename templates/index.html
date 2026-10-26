@@ -25,11 +25,28 @@
 </head>
 <body>
   <header>
-    <h1>Rocket Analytics</h1>
+    <h1>{% include "favicon.svg" %} Rocket Analytics</h1>
     <div class="header-actions">
-      {# Wired in workspace.js: restores the default pane layout. #}
-      <button id="reset-layout" class="hdr-btn" type="button">Reset layout</button>
-      {% if not offline %}<a class="hdr-btn" href="{{ offline_href }}" download>Download offline copy</a>{% endif %}
+      {# Icon buttons — tooltips carry the labels. Reset is wired in
+         workspace.js; the accent button resets the pane layout. The
+         stamp leads the actions so the group right-aligns as one —
+         it hides on phones, leaving just the buttons. #}
+      <span class="hdr-updated">Updated <span class="data-updated"></span></span>
+      <button id="reset-layout" class="hdr-btn hdr-accent" type="button" aria-label="Reset layout" title="Reset layout">⟲</button>
+      {% if not offline %}<a class="hdr-btn" href="{{ offline_href }}" download aria-label="Download offline copy" title="Download offline copy">↓</a>{% endif %}
+      <div class="hdr-info pick-filter">
+        <button id="hdr-info-btn" class="hdr-btn" type="button" aria-label="About this data" title="About this data">ⓘ</button>
+        {# The old footer copy lives in this popover — the pick-pop class
+           gets panel chrome and the outside-click close (charts.js) for
+           free. Updated also renders inline beside the buttons, hiding
+           into this popover at phone widths. #}
+        <div class="pick-pop hdr-pop" id="hdr-pop" hidden>
+          <span>Dates and times are local to you</span>
+          <span>Data from {% if offline %}Launch Library{% else %}<a href="https://thespacedevs.com/llapi" target="_blank" rel="noopener">Launch Library</a>{% endif %}</span>
+          <span class="pop-updated">Updated <span class="data-updated"></span></span>
+          {% if not offline %}<span><a href="https://github.com/krocketcoding/rocket-analytics" target="_blank" rel="noopener">GitHub repository</a></span>{% endif %}
+        </div>
+      </div>
     </div>
   </header>
 
@@ -40,12 +57,7 @@
        below; this template is just the page shell. #}
     <div id="workspace"></div>
 
-    <div class="footer-note">
-      Dates and times are local to you ·
-      Data from {% if offline %}Launch Library{% else %}<a href="https://thespacedevs.com/llapi" target="_blank" rel="noopener">Launch Library</a>{% endif %} ·
-      Updated <span id="data-updated"></span>{% if not offline %} ·
-      <a href="https://github.com/krocketcoding/rocket-analytics" target="_blank" rel="noopener">GitHub repository</a>{% endif %}
-    </div>
+
   </main>
 
   {# The single normalized dataset: launch records reference the entity

@@ -580,6 +580,12 @@ addEventListener('hashchange', () => {
   if (s) applyState(s);
 });
 
+// The header's info button toggles its popover — the outside-click
+// close comes free from charts.js's pick-pop handler.
+$('hdr-info-btn').addEventListener('click', () => {
+  $('hdr-pop').hidden = !$('hdr-pop').hidden;
+});
+
 $('reset-layout').addEventListener('click', () => {
   try { localStorage.removeItem(STORAGE_KEY); } catch {}
   applyState(defaultState());

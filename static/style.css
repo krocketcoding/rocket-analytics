@@ -52,38 +52,65 @@ body {
   overflow: hidden;
 }
 
-/* Header and footer */
+/* Header */
 
 /* Compact bar — the workspace owns the screen, so the header is just
-   the title and the header-level buttons. */
+   the brand mark + title, the updated stamp, and icon buttons. The
+   old footer's attribution/meta copy lives in the ⓘ popover. */
 header {
   align-items: center;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   display: flex;
-  justify-content: space-between;
+  gap: 0.75rem;
   padding: 0.45rem 1rem;
 }
 
 header h1 {
+  align-items: center;
+  display: flex;
   font-size: 1.05rem;
+  gap: 0.4rem;
   letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+/* The favicon doubles as the brand mark — one file, both uses. */
+header h1 svg {
+  height: 1.1em;
+  width: 1.1em;
+}
+
+/* The stamp leads the actions cluster — it hides on phones, and the
+   auto margin on the group keeps the buttons right-aligned either
+   way. */
+.hdr-updated {
+  color: var(--dim);
+  font-size: 0.8rem;
+  margin-right: 0.35rem;
+  white-space: nowrap;
 }
 
 .header-actions {
+  align-items: center;
   display: flex;
   gap: 0.5rem;
+  margin-left: auto;
 }
 
+/* Icon-only header buttons — tooltips/aria-labels carry the names. */
 .hdr-btn {
+  align-items: center;
   background: none;
   border: 1px solid var(--border);
   border-radius: 8px;
   color: var(--dim);
   cursor: pointer;
+  display: inline-flex;
   font-family: inherit;
-  font-size: 0.8rem;
-  padding: 0.3rem 0.7rem;
+  font-size: 0.95rem;
+  justify-content: center;
+  padding: 0.25rem 0.6rem;
   text-decoration: none;
 }
 
@@ -92,20 +119,46 @@ header h1 {
   color: var(--text);
 }
 
-.footer-note {
-  color: var(--dim);
-  font-size: 0.85rem;
-  margin-top: 0.75rem;
-  text-align: center;
-}
-
-.footer-note a {
+/* Reset carries the accent — the one header action that changes state. */
+.hdr-accent {
   color: var(--accent);
 }
 
+.hdr-accent:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* The info popover: pick-pop chrome, but anchored to the right edge
+   under its ⓘ button and sized to its text lines. Two classes — the
+   generic .pick-pop rules live later in this file, and left+right
+   both set makes left win, hanging the panel off the viewport. */
+.hdr-info .hdr-pop {
+  color: var(--text-soft);
+  font-size: 0.9rem;
+  gap: 0.5rem;
+  left: auto;
+  line-height: 1.45;
+  max-width: min(80vw, 20rem);
+  min-width: 0;
+  padding: 0.75rem 0.9rem;
+  right: 0;
+  width: max-content;
+}
+
+.hdr-pop a {
+  color: var(--accent);
+}
+
+/* The popover's Updated copy only exists for phones — wider layouts
+   show the stamp inline beside the buttons instead. */
+.hdr-pop .pop-updated {
+  display: none;
+}
+
 /* Layout: main is a column flex so the workspace fills the viewport
-   between the header bar and the footer — panes scroll internally
-   instead of the page scrolling through tables. */
+   under the header bar — panes scroll internally instead of the page
+   scrolling through tables. */
 
 main {
   display: flex;
@@ -973,6 +1026,7 @@ tbody tr[data-set]:focus-visible {
 
 @media (max-width: 800px) {
   header {
+    gap: 0.5rem;
     padding: 0.4rem 0.75rem;
   }
 
@@ -980,9 +1034,19 @@ tbody tr[data-set]:focus-visible {
     font-size: 0.95rem;
   }
 
+  /* The stamp moves into the ⓘ popover at phone widths — inline copy
+     hides, popover copy appears. */
+  .hdr-updated {
+    display: none;
+  }
+
+  .hdr-pop .pop-updated {
+    display: block;
+  }
+
   .hdr-btn {
-    font-size: 0.75rem;
-    padding: 0.25rem 0.55rem;
+    font-size: 0.85rem;
+    padding: 0.25rem 0.5rem;
   }
 
   main {
