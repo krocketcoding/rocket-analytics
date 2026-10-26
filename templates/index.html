@@ -4,6 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Rocket Analytics</title>
+  {# favicon.svg is embedded as a data URI so the same tag works online and
+     in the single-file offline build — no external file to resolve when the
+     offline page is opened from disk. The include keeps the icon a real SVG
+     file; urlencode escapes it (# → %23, etc.) for the URI. #}
+  {% set favicon_svg %}{% include "favicon.svg" %}{% endset %}
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,{{ favicon_svg | urlencode }}">
   {% if inline_css %}
   <style>{{ inline_css | safe }}</style>
   {% else %}
