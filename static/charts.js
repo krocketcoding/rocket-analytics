@@ -142,6 +142,19 @@ function makeCheckPopover(opts) {
 // code, from the def's countryMap) decides which codes are worth
 // listing — only ones that can appear among this grouping.
 function makeCountryFilter(sel, onChange, map) {
+  // Only codes that actually appear among this grouping are worth
+  // listing; names come from the stats build's country names map.
+  const codes = [...new Set(Object.values(map))]
+    .sort((a, b) => (STATS.countryNames[a] || a)
+      .localeCompare(STATS.countryNames[b] || b));
+  // Prune saved picks this grouping can't list — e.g. a layout saved by
+  // another copy of the site with different data. Like the rocket and
+  // entity pickers, so an invisible pick can't filter the chart to
+  // nothing; Exclude resets too if no picks survive.
+  const listed = new Set(codes);
+  const before = sel.codes.size;
+  [...sel.codes].forEach(c => { if (!listed.has(c)) sel.codes.delete(c); });
+  if (sel.codes.size < before && !sel.codes.size) sel.negate = false;
   // The Exclude row is a mode toggle, not an option, so it rides in
   // extraRows — as a function, since its checkbox needs the emit the
   // popover creates.
@@ -151,11 +164,6 @@ function makeCountryFilter(sel, onChange, map) {
   negCb.type = 'checkbox';
   negCb.checked = sel.negate;
   negRow.append(negCb, ' Exclude selected');
-  // Only codes that actually appear among this grouping are worth
-  // listing; names come from the stats build's country names map.
-  const codes = [...new Set(Object.values(map))]
-    .sort((a, b) => (STATS.countryNames[a] || a)
-      .localeCompare(STATS.countryNames[b] || b));
   return makeCheckPopover({
     title: 'Countries',
     options: codes.map(code => [code, STATS.countryNames[code] || code]),
