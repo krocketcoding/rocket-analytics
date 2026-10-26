@@ -1,7 +1,7 @@
 // Chart registry: CHART_DEFS declares every chart the UI can show (the
 // comment above it spells out the def contract), plus the data-slicing
 // helpers the defs' data() functions share. A classic script — uses
-// STATS from app.js and the factories/views from chart-factories.js;
+// STATS from stats.js and the factories/views from chart-factories.js;
 // load order is JS_FILES in pipeline/config.py.
 // Scope lookup shared by chart defs: a year reads that year's bucket
 // (missing keys -> empty chart).

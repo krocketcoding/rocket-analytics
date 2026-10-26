@@ -1,4 +1,3 @@
-{% from 'macros.html' import launch_table, rocket_table, modal -%}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -23,60 +22,27 @@
 
   <main>
     {# The workspace: two view panes with a draggable divider between
-       them, built by workspace.js — each pane shows any chart or table. #}
+       them, built by workspace.js — each pane shows any chart or table.
+       Tables, modals, and charts all render in JS from the dataset
+       below; this template is just the page shell. #}
     <div id="workspace"></div>
-
-    {# The three tables render here, hidden; workspace.js relocates one
-       into a pane when it's picked. They stay server-rendered so the
-       table markup lives only in the macros above. #}
-    <div id="table-staging" hidden>
-      {{ launch_table('upcoming', upcoming, 'Showing the next ' ~ upcoming | length ~ ' launches') }}
-      {{ launch_table('past', previous, 'Showing the last ' ~ previous | length ~ ' launches', with_status=true) }}
-      {{ rocket_table(rocket_rows, 'Showing ' ~ rocket_rows | length ~ ' rockets observed in the listed launches') }}
-    </div>
 
     <div class="footer-note">
       Dates and times are local to you ·
       Data from {% if offline %}Launch Library{% else %}<a href="https://thespacedevs.com/llapi" target="_blank" rel="noopener">Launch Library</a>{% endif %} ·
-      Updated <span id="data-updated" data-ts="{{ data_updated or '' }}"></span>{% if not offline %} ·
+      Updated <span id="data-updated"></span>{% if not offline %} ·
       <a href="https://github.com/krocketcoding/rocket-analytics" target="_blank" rel="noopener">GitHub repository</a>{% endif %}
     </div>
   </main>
 
-  {# The Links tab only exists in the online build; the offline bundle
-     strips all remote URLs. #}
-  {% set launch_tabs = [('mtab-overview', 'Launch'), ('mtab-entities', 'Hardware & Orgs'), ('mtab-updates', 'Updates')] + ([('mtab-links', 'Links')] if not offline else []) %}
-  {% call modal('modal', launch_tabs) %}
-      <div class="modal-pane" id="mtab-overview">
-        <img id="modal-image" class="modal-image" hidden alt="">
-        <img id="modal-infographic" class="modal-image" hidden alt="">
-        <p id="modal-live" class="live-badge" hidden>Webcast live</p>
-        <dl id="modal-details" class="modal-details"></dl>
-        <p id="modal-desc"></p>
-        <div id="modal-patches" class="patch-row"></div>
-        <h3 id="modal-stat-head" hidden>Statistics</h3>
-        <dl id="modal-stats" class="modal-details"></dl>
-      </div>
-      <div class="modal-pane" id="mtab-entities" hidden></div>
-      <div class="modal-pane" id="mtab-updates" hidden></div>
-      <div class="modal-pane" id="mtab-links" hidden></div>
-  {% endcall %}
+  {# The single normalized dataset: launch records reference the entity
+     tables (agencies/rockets/pads/locations/statuses/programs/authors)
+     by id and image URLs by index into the images list, so nothing is
+     shipped twice. Everything on the page derives from this one block. #}
+  <script type="application/json" id="data">{{ data | tojson }}</script>
 
-  {% call modal('rocket-modal', [('rtab-rocket', 'Rocket'), ('rtab-provider', 'Provider')]) %}
-      <div class="modal-pane" id="rtab-rocket"></div>
-      <div class="modal-pane" id="rtab-provider" hidden></div>
-  {% endcall %}
-
-  <script type="application/json" id="data-upcoming">{{ upcoming_detail | tojson }}</script>
-  <script type="application/json" id="data-previous">{{ previous_detail | tojson }}</script>
-  <script type="application/json" id="data-entities">{{ entities | tojson }}</script>
-  <script type="application/json" id="data-stats">{{ stats | tojson }}</script>
-  {# url -> data URI map for images embedded in the offline build;
-     empty in the normal build #}
-  <script type="application/json" id="data-images">{{ images | default({}) | tojson }}</script>
-
-  {# Scripts run at the end of body so the DOM — including the JSON data
-     blocks above — is fully parsed when app.js executes. #}
+  {# Scripts run at the end of body so the DOM — including the data
+     block above — is fully parsed when app.js executes. #}
   {% if inline_js %}
   <script>{{ inline_js | safe }}</script>
   {% else %}

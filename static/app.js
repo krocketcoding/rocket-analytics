@@ -1,21 +1,23 @@
 // Rocket Analytics front end: detail modals and shared helpers.
-// Chart code lives in chart-factories.js, chart-defs.js, and
-// charts.js, and the two-pane workspace shell in workspace.js — all
+// Stats are computed by stats.js, the chart code lives in
+// chart-factories.js, chart-defs.js, and charts.js, table rendering in
+// tables.js, and the two-pane workspace shell in workspace.js — all
 // load after this file (JS_FILES in pipeline/config.py) and share its
 // top-level bindings.
-// All data is baked into the page by the build as JSON inside
-// <script type="application/json"> tags; parse it once up front.
+// All data is baked into the page as one normalized JSON blob inside a
+// <script type="application/json" id="data"> tag; parse it once up
+// front. Launch records carry ids into the entity tables
+// (agencies/rockets/pads/locations/statuses/programs/authors) and
+// indices into the images list — nothing is embedded twice.
 
 const $ = id => document.getElementById(id);
-const readJson = id => JSON.parse($(id).textContent);
 
-const LAUNCHES = {upcoming: readJson('data-upcoming'), past: readJson('data-previous')};
-const ENTITIES = readJson('data-entities');
-const STATS = readJson('data-stats');
-// url -> data URI for images embedded in the offline bundle; empty online,
-// where imgSrc passes the original URL straight through.
-const IMAGES = readJson('data-images');
-const imgSrc = url => IMAGES[url] || url;
+const DATA = JSON.parse($('data').textContent);
+// Image references are indices into the interned URL table; the offline
+// build swaps wanted slots for data URIs and leaves null elsewhere, so
+// a null result means "no image to show". Index 0 is a real image —
+// always test the resolved value, never the index's truthiness.
+const imgSrc = i => DATA.images[i] ?? null;
 
 // Formatting and markup helpers
 const esc = s => String(s).replace(/[&<>"']/g,
@@ -35,14 +37,7 @@ const fmtDuration = s => {
     .filter(([v]) => v).map(([v, u]) => v + u).join(' ') || null;
 };
 
-$('data-updated').textContent = fmtLocal($('data-updated').dataset.ts);
-// The server-side date is ISO text; reformat each table cell locally.
-document.querySelectorAll('td[data-net]').forEach(td => {
-  const d = new Date(td.dataset.net);
-  if (isNaN(d)) return;
-  td.innerHTML = esc(d.toLocaleDateString(undefined, {dateStyle: 'medium'}))
-    + '<br>' + esc(d.toLocaleTimeString(undefined, {timeStyle: 'short'}));
-});
+$('data-updated').textContent = fmtLocal(DATA.meta.updated) || '';
 
 // Render [label, value] pairs as <dt>/<dd>, skipping empty values
 const dlRows = pairs => pairs
@@ -57,12 +52,12 @@ const fieldRows = (obj, defs) => dlRows(defs.map(([l, get]) => [l, get(obj)]));
 // display order. Getters return null/'' for fields to skip.
 const LAUNCH_FIELDS = [
   ['Date', d => fmtLocal(d.net)],
-  ['Status', d => d.status],
+  ['Status', d => DATA.statuses[d.status_id]?.name],
   ['Launch window', d => d.window_start && `${fmtLocal(d.window_start)} – ${fmtLocal(d.window_end)}`],
   ['Mission', d => d.mission_name],
   ['Type', d => d.mission_type],
   ['Orbit', d => d.orbit],
-  ['Program', d => (d.program || []).filter(Boolean).join(' · ')],
+  ['Program', d => (d.program_ids || []).map(id => DATA.programs[id]?.name).filter(Boolean).join(' · ')],
   ['Success probability', d => d.probability != null && d.probability >= 0 ? `${d.probability}%` : null],
   ['Hold reason', d => d.holdreason],
   ['Failure reason', d => d.failreason],
@@ -113,7 +108,7 @@ const AGENCY_FIELDS = [
 ];
 
 const PAD_FIELDS = [
-  ['Location', p => p.location],
+  ['Location', p => DATA.locations[p.location_id]?.name],
   ['Coordinates', p => p.latitude && `${p.latitude}, ${p.longitude}`],
   ['Launches', p => p.launches],
 ];
@@ -121,7 +116,7 @@ const PAD_FIELDS = [
 // Extra launch stats comparing against the pad's own history
 const statRows = d => {
   const total = d.attempts_location;
-  const location = ENTITIES.pads[d.pad_id]?.location;
+  const location = DATA.locations[DATA.pads[d.pad_id]?.location_id]?.name;
   const year = d.attempts_location_year;
   return [
     ...(location && total != null
@@ -138,7 +133,8 @@ function entityBody(e, fieldDefs, links) {
   if (!e || !e.name) return '';
   const linkHtml = links.filter(([, u]) => u)
     .map(([l, u]) => extLink(l, u)).join(' ');
-  return (e.image ? `<img class="modal-image" src="${esc(imgSrc(e.image))}" alt="">` : '')
+  const src = imgSrc(e.image);
+  return (src ? `<img class="modal-image" src="${esc(src)}" alt="">` : '')
     + `<dl class="modal-details">${fieldRows(e, fieldDefs)}</dl>`
     + (e.description ? `<p class="entity-desc">${esc(e.description)}</p>` : '')
     + (linkHtml ? `<p class="entity-links">${linkHtml}</p>` : '');
@@ -149,17 +145,18 @@ function entitySection(title, e, fieldDefs, links) {
   return body ? `<h3>${esc(title)}: ${esc(e.name)}</h3>${body}` : '';
 }
 
-// The provider logo is often the same asset as the rocket image — show it once.
+// The provider logo is often the same asset as the rocket image — the
+// interned indices compare equal, so show it once.
 const dedupeProviderImage = (provider, rocket) =>
   provider && rocket && provider.image === rocket.image
     ? {...provider, image: null} : provider;
 
 function renderEntities(d) {
-  const rocket = ENTITIES.rockets[d.rocket_id];
-  const provider = dedupeProviderImage(ENTITIES.providers[d.provider_id], rocket);
-  const pad = ENTITIES.pads[d.pad_id];
+  const rocket = DATA.rockets[d.rocket_id];
+  const provider = dedupeProviderImage(DATA.agencies[d.provider_id], rocket);
+  const pad = DATA.pads[d.pad_id];
   const agencies = (d.agency_ids || [])
-    .map(id => ENTITIES.agencies[id]).filter(Boolean);
+    .map(id => DATA.agencies[id]).filter(Boolean);
 
   let html = entitySection('Rocket', rocket, ROCKET_FIELDS, entityLinks(rocket))
     + entitySection('Provider', provider, AGENCY_FIELDS, entityLinks(provider))
@@ -175,11 +172,14 @@ function renderEntities(d) {
   $('mtab-entities').innerHTML = html || '<p class="muted">No details available.</p>';
 }
 
-const updateCard = u => `<div class="update">
-  <div class="update-meta">${u.profile_image ? `<img class="update-avatar" src="${esc(u.profile_image)}" alt="">` : ''}${esc(fmtLocal(u.created_on) || '')}${u.created_by ? ' · ' + esc(u.created_by) : ''}</div>
+const updateCard = u => {
+  const avatar = imgSrc(DATA.authors[u.created_by]?.image);
+  return `<div class="update">
+  <div class="update-meta">${avatar ? `<img class="update-avatar" src="${esc(avatar)}" alt="">` : ''}${esc(fmtLocal(u.created_on) || '')}${u.created_by ? ' · ' + esc(u.created_by) : ''}</div>
   <p>${esc(u.comment)}</p>
   ${u.info_url ? extLink('Source', u.info_url) : ''}
 </div>`;
+};
 
 function renderUpdates(d) {
   const updates = d.updates || [];
@@ -193,6 +193,9 @@ const linkList = links => '<ul class="link-list">' + links.map(l =>
 ).join('') + '</ul>';
 
 function renderLinks(d) {
+  // The offline build strips all remote URLs and omits the Links tab
+  // entirely — there is no pane to fill.
+  if (DATA.meta.offline) return;
   const launch = d.links || [];
   const mission = d.mission_links || [];
   $('mtab-links').innerHTML =
@@ -200,6 +203,52 @@ function renderLinks(d) {
     + (mission.length ? `<h3>Mission</h3>${linkList(mission)}` : '')
     || '<p class="muted">No links for this launch.</p>';
 }
+
+// Modal shells used to be Jinja macros; makeModal reproduces the same
+// markup — same ids and classes — so style.css and the tab wiring keep
+// working. `tabs` is [pane id, label, innerHtml] triples: one button
+// plus one .modal-pane per triple, the first active and visible, the
+// rest hidden.
+function makeModal(id, tabs) {
+  const el = document.createElement('div');
+  el.id = id;
+  el.className = 'modal';
+  el.hidden = true;
+  el.innerHTML = `
+  <div class="modal-card">
+    <button class="modal-close" aria-label="Close">&times;</button>
+    <h2 id="${id}-name"></h2>
+    <div class="modal-tabs">
+      ${tabs.map(([pane, label], i) =>
+        `<button class="tab${i === 0 ? ' active' : ''}" data-pane="${pane}">${label}</button>`).join('')}
+    </div>
+    ${tabs.map(([pane, , html = ''], i) =>
+      `<div class="modal-pane" id="${pane}"${i ? ' hidden' : ''}>${html}</div>`).join('')}
+  </div>`;
+  document.body.append(el);
+  return el;
+}
+
+// The Links tab only exists in the online build; the offline bundle
+// strips all remote URLs, so it gets no tab and no pane.
+const modal = makeModal('modal', [
+  ['mtab-overview', 'Launch', `
+    <img id="modal-image" class="modal-image" hidden alt="">
+    <img id="modal-infographic" class="modal-image" hidden alt="">
+    <p id="modal-live" class="live-badge" hidden>Webcast live</p>
+    <dl id="modal-details" class="modal-details"></dl>
+    <p id="modal-desc"></p>
+    <div id="modal-patches" class="patch-row"></div>
+    <h3 id="modal-stat-head" hidden>Statistics</h3>
+    <dl id="modal-stats" class="modal-details"></dl>`],
+  ['mtab-entities', 'Hardware & Orgs'],
+  ['mtab-updates', 'Updates'],
+  ...(DATA.meta.offline ? [] : [['mtab-links', 'Links']]),
+]);
+const rocketModal = makeModal('rocket-modal',
+  [['rtab-rocket', 'Rocket'], ['rtab-provider', 'Provider']]);
+
+const setImg = (img, url) => { img.hidden = !url; if (url) img.src = url; };
 
 // Generic tab wiring: buttons carry data-pane pointing at their pane's id.
 // Returns a reset function that re-activates the first tab.
@@ -215,47 +264,6 @@ function wireTabs(btnSel, paneSel, onSwitch) {
   return () => activate(btns[0]);
 }
 
-// Sortable rocket columns: data-sort names a rocket entity key.
-// A new column starts descending; re-clicking flips direction. The
-// current sort is recorded on the wrap's dataset so the workspace can
-// serialize and restore it; sortRockets is called from workspace.js
-// when a saved layout lands the table in a pane.
-const rocketTbody = document.querySelector('#tab-rockets tbody');
-const rocketSortThs = document.querySelectorAll('#tab-rockets th.sortable');
-let rocketSortKey = 'launches';
-
-function sortRockets(key, dir) {
-  const th = [...rocketSortThs].find(t => t.dataset.sort === key);
-  if (!th) return;
-  rocketSortKey = key;
-  rocketSortThs.forEach(t => delete t.dataset.dir);
-  th.dataset.dir = dir;
-  const mul = dir === 'desc' ? 1 : -1;
-  const val = tr => ENTITIES.rockets[tr.dataset.id]?.[key];
-  [...rocketTbody.querySelectorAll('tr')]
-    .sort((a, b) => {
-      const va = val(a), vb = val(b);
-      // Unknowns stay at the bottom in either direction.
-      if (va == null) return vb == null ? 0 : 1;
-      if (vb == null) return -1;
-      return mul * (vb - va);
-    })
-    .forEach(r => rocketTbody.appendChild(r));
-  const wrap = $('tab-rockets');
-  wrap.dataset.sort = key;
-  wrap.dataset.dir = dir;
-}
-
-rocketSortThs.forEach(th => th.addEventListener('click', () => {
-  const key = th.dataset.sort;
-  const dir = key === rocketSortKey && th.dataset.dir === 'desc'
-    ? 'asc' : 'desc';
-  sortRockets(key, dir);
-}));
-
-const modal = $('modal');
-const rocketModal = $('rocket-modal');
-const setImg = (img, url) => { img.hidden = !url; if (url) img.src = url; };
 const resetModalTabs = wireTabs('#modal .modal-tabs .tab', '#modal .modal-pane');
 const resetRocketTabs = wireTabs('#rocket-modal .modal-tabs .tab',
                                  '#rocket-modal .modal-pane');
@@ -272,13 +280,16 @@ function closeModal(m) {
 
 function openModal(d) {
   $('modal-name').textContent = d.name;
-  setImg($('modal-image'), d.image);
-  setImg($('modal-infographic'), d.infographic);
+  setImg($('modal-image'), imgSrc(d.image));
+  setImg($('modal-infographic'), imgSrc(d.infographic));
   $('modal-live').hidden = !d.webcast_live;
   $('modal-details').innerHTML = fieldRows(d, LAUNCH_FIELDS);
   $('modal-desc').textContent = d.mission_description || '';
+  // Patch indices resolve through the images table; offline builds
+  // leave null in slots that weren't worth embedding — skip those.
   $('modal-patches').innerHTML = (d.mission_patches || [])
-    .map(u => `<img class="patch" src="${esc(imgSrc(u))}" alt="Mission patch">`).join('');
+    .map(imgSrc).filter(Boolean)
+    .map(u => `<img class="patch" src="${esc(u)}" alt="Mission patch">`).join('');
 
   const statsHtml = dlRows(statRows(d));
   $('modal-stats').innerHTML = statsHtml;
@@ -292,33 +303,34 @@ function openModal(d) {
 }
 
 function openRocketModal(id) {
-  const rocket = ENTITIES.rockets[id];
+  const rocket = DATA.rockets[id];
   if (!rocket) return;
   $('rocket-modal-name').textContent = rocket.name || 'Rocket';
   $('rtab-rocket').innerHTML =
     entityBody(rocket, ROCKET_FIELDS, entityLinks(rocket))
     || '<p class="muted">No details available.</p>';
 
-  // The manufacturer may be stored as a provider or an agency entity.
-  const provider = dedupeProviderImage(
-    ENTITIES.providers[rocket.manufacturer_id]
-      || ENTITIES.agencies[rocket.manufacturer_id], rocket);
+  // Provider, mission agency, and manufacturer share one agencies
+  // table — the rocket's manufacturer_id resolves straight to it.
+  const provider = dedupeProviderImage(DATA.agencies[rocket.manufacturer_id], rocket);
   $('rtab-provider').innerHTML = provider
     ? entityBody(provider, AGENCY_FIELDS, entityLinks(provider))
-    : (rocket.manufacturer
-        ? `<p class="entity-desc">${esc(rocket.manufacturer)}</p>`
-        : '<p class="muted">No details available.</p>');
+      || '<p class="muted">No details available.</p>'
+    : '<p class="muted">No details available.</p>';
 
   resetRocketTabs();
   showModal(rocketModal);
 }
+
+// The table views' data-set names map onto the launch lists they show.
+const LAUNCH_SETS = {upcoming: DATA.upcoming, past: DATA.previous};
 
 // Row clicks open the matching modal; Esc, backdrop, and × close them.
 document.querySelector('main').addEventListener('click', e => {
   const tr = e.target.closest('tr[data-set]');
   if (!tr) return;
   if (tr.dataset.set === 'rockets') openRocketModal(tr.dataset.id);
-  else openModal(LAUNCHES[tr.dataset.set][+tr.dataset.idx]);
+  else openModal(LAUNCH_SETS[tr.dataset.set][+tr.dataset.idx]);
 });
 [modal, rocketModal].forEach(m => {
   m.querySelector('.modal-close')

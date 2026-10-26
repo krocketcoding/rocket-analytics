@@ -13,7 +13,8 @@ pip install -r requirements.txt
 python main.py                    # builds into site/
 python main.py --refresh          # ignore the API response cache
 python main.py --max-cache-age 5  # refetch if the cache is over 5 hours old
-python -m unittest discover tests # run the unit tests
+python -m unittest discover tests # run the Python unit tests
+node --test                       # run the JS stats invariants (needs a prior build)
 ```
 
 Fetched launch data is cached in `launch-cache.json` (git ignored) and reused regardless of age unless `--refresh` or
@@ -25,17 +26,18 @@ Open `site/index.html` in a browser to preview.
 
 Each build also produces `site/rocket-analytics-offline.html`, a portable single-file version of the site with the
 stylesheet and all JavaScript inlined — it can be opened in any browser without an internet connection. Mission
-patches and rocket images are downloaded, downscaled to display size, and embedded as WebP data URIs in a shared
-`data-images` map (`PATCH_IMAGE_PX`, `ROCKET_IMAGE_PX`, and `IMAGE_QUALITY` in `pipeline/config.py` control the
-size/quality tradeoff); all other remote URLs and external links are stripped out. Processed images are cached in
-`image-cache/` (gitignored) so repeat builds don't re-download them. The Chart.js library is vendored
-as `static/chart-library.min.js` and used by both versions of the site; the offline build is skipped if a static file is missing.
+patches and rocket images are downloaded, downscaled to display size, and embedded as WebP data URIs in the
+dataset's `images` table (the slots for every other image read `null`; `PATCH_IMAGE_PX`, `ROCKET_IMAGE_PX`, and
+`IMAGE_QUALITY` in `pipeline/config.py` control the size/quality tradeoff); all remote URLs and external links are
+stripped out. Processed images are cached in `image-cache/` (gitignored) so repeat builds don't re-download them.
+The Chart.js library is vendored as `static/chart-library.min.js` and used by both versions of the site; the
+offline build is skipped if a static file is missing.
 
 ## How it works
 
-- `main.py` drives the `pipeline` package, which fetches upcoming and previous launches, computes stats, and renders
-  `templates/index.html` into `site/` — once as `index.html` and once as `rocket-analytics-offline.html`, a
-  self-contained single-file build with all resources inlined to work offline.
+- `main.py` drives the `pipeline` package, which fetches upcoming and previous launches, normalizes them into one
+  dataset, and renders `templates/index.html` into `site/` — once as `index.html` and once as
+  `rocket-analytics-offline.html`, a self-contained single-file build with all resources inlined to work offline.
 - `static/` is copied to `site/static/`.
 - The GitHub Actions workflow in `.github/workflows/deploy.yml` rebuilds and deploys the site in a single job on every
   push to `master`, every 6 hours on a schedule, and on manual dispatch.
@@ -50,14 +52,22 @@ as `static/chart-library.min.js` and used by both versions of the site; the offl
 The pipeline is one module per step; data flows roughly like this:
 
 ```
-LL2 API ──fetch──> launch dicts ──curate──> details + entities + stats
-                      │                              │
-                      └──> launch-cache.json         └──> Jinja context
+LL2 API ──fetch──> launch dicts ──normalize──> one dataset (data JSON)
+                      │                             │
+                      └──> launch-cache.json        └──> Jinja page shell
                                                               │
                                             templates/index.html + static/
                                                               │
                                         site/index.html + offline bundle
+                                                              │
+                            stats.js/tables.js/charts.js derive everything
+                            in the browser from that one `data` block
 ```
+
+The dataset is the key idea: launch records reference shared entity tables (`agencies`, `rockets`, `pads`,
+`locations`, `statuses`, `programs`, `authors`) by id and image URLs by index into a deduplicated `images` list, so
+no provider, location string, or avatar URL ships twice. All aggregation and rendering — stats, tables, modals,
+charts — happens in JavaScript from that single block; Jinja only renders the page shell around it.
 
 - `main.py` — command-line entry point. Decides between cached data and a fresh fetch, then hands everything to the
   builder.
@@ -69,27 +79,31 @@ LL2 API ──fetch──> launch dicts ──curate──> details + entities +
   API.
 - `pipeline/details.py` — selects which API fields the site actually uses. The API returns very large launch objects;
   the `*_FIELDS` specs and `pick`/`pull` helpers copy just the needed fields into flat dicts.
-- `pipeline/stats.py` — aggregates launch counts per rocket, per rocket family, per manufacturer, per country, and
-  per year for the charts. Yearly bars split into orbital, suborbital, and failed segments; the lifetime 'all time'
-  bars split into success and failed only, since the API has no lifetime orbit breakdown. The site and family
-  groupings also keep a nested per-rocket tally so the front end can re-slice them (rocket filter, variant stacking).
-- `pipeline/build.py` — collects shared entities (rockets, providers, pads, agencies), renders `templates/index.html`
-  into `site/`, and hands off to the offline build.
+- `pipeline/dataset.py` — normalizes the launches into the single dataset the site ships: launch records referencing
+  entity tables by id and interned image URLs by index, with null/empty fields dropped.
+- `pipeline/build.py` — renders `templates/index.html` into `site/` with the dataset as the one `data` JSON block,
+  and hands off to the offline build.
 - `pipeline/offline_bundle.py` — the offline single-file build: downloads and downscales mission patch / rocket images
-  into data URIs, strips other remote URLs, and re-renders the template with everything inlined.
-- `templates/index.html` — the site's markup as one Jinja template; all charts and tables are driven by the context
-  dict built in `build.py`. Reusable table and modal markup lives in `templates/macros.html`, imported at the top.
-- `static/` — the stylesheet, the page's JavaScript (`app.js` for detail modals and table row clicks; the chart code
-  split across `chart-factories.js` for Chart.js factories, `chart-defs.js` for the chart registry, `charts.js`
-  for the per-pane filter controls, and `workspace.js` for the two-pane workspace — view pickers, divider drag,
-  maximize, PNG/CSV export, and URL/localStorage persistence), and a vendored Chart.js — copied into
-  `site/` verbatim and inlined for the offline build.
-- `api-examples/` — sample API responses. Open these to see the raw shape of a launch record before it's curated by
-  `details.py`.
+  into data URIs inside the dataset's `images` table, strips remote URLs, and re-renders the template with
+  everything inlined.
+- `templates/index.html` — the site's markup as one minimal Jinja shell: head, header, `#workspace`, footer, the
+  `data` JSON block, and the script tags. All view markup is built in JavaScript.
+- `static/` — the stylesheet, the page's JavaScript (`app.js` for the dataset parse, detail modals, and shared
+  helpers; `stats.js` computes the chart aggregations in the browser — per-year launch counts by rocket, rocket
+  family, manufacturer, country, and launch site, split into orbital, suborbital, and failed segments, with site
+  and family rows keeping a nested per-rocket tally so the rocket filter and variant stacking can re-slice them;
+  `tables.js` for the table views and their CSV export; the chart code split across `chart-factories.js` for
+  Chart.js factories, `chart-defs.js` for the chart registry, and `charts.js` for the per-pane filter controls;
+  and `workspace.js` for the two-pane workspace — view pickers, divider drag, maximize, PNG/CSV export, and
+  URL/localStorage persistence), and a vendored Chart.js — copied into `site/` verbatim and inlined for the
+  offline build.
+- `api-examples/` — sample API responses. Open these to see the raw shape of a launch record before `dataset.py`
+  normalizes it.
 
 **Reading the code:** follow the data. Start at `main.main()`, then `api.fetch_launches()` for input,
-`details.launch_detail()` and `details.collect_entities()` for the field transformations, `stats.compute_stats()` for
-aggregation, and `build.build_site()` / `offline_bundle.build_offline_bundle()` for output.
+`dataset.build_dataset()` for normalization, and `build.build_site()` / `offline_bundle.build_offline_bundle()` for
+output. On the front end, start at `app.js`'s `DATA` parse, then `stats.js`'s `computeStats()` for the aggregations
+the charts read.
 
 ## Useful Links
 - Launch Library 2 API

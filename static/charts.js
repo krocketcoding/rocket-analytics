@@ -4,7 +4,7 @@
 // workspace shell — panes, divider, persistence — lives in
 // workspace.js. A classic script, not a module, so file:// previews
 // and the offline build work — it shares app.js's top-level bindings
-// ($, esc, STATS) plus the factories and defs from the other chart
+// ($, esc, STATS from stats.js) plus the factories and defs from the other chart
 // files; load order is JS_FILES in pipeline/config.py.
 // Segmented scope control over a `scopes` value list — a button per
 // year. Reports the choice via onChange; hides itself when there's only

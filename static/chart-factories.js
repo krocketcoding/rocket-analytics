@@ -53,9 +53,8 @@ const rowTotal = v => (v && typeof v === 'object')
   ? Object.values(v).reduce((a, b) => a + b, 0) : v;
 
 // Segment keys a stacked row may carry, in stack order (failures always
-// on top). Yearly data uses orbital/suborbital/failed; 'all time' has
-// no lifetime orbit breakdown, so it stacks success/failed instead —
-// except launch-site totals, which are a single flat 'total' segment.
+// on top). All yearly rows stack orbital/suborbital/failed; 'success'
+// and 'total' are fallbacks for flat single-segment series.
 const SEGMENTS = {
   success:    {label: 'Success',    color: '#4ade80'},
   orbital:    {label: 'Orbital',    color: '#6ea8fe'},

@@ -1,21 +1,21 @@
 // Workspace shell: two panes, each holding any view — a chart from
-// CHART_DEFS or a table relocated out of #table-staging. Owns the pane
-// skeleton (view picker, per-view controls, pager, export, maximize),
-// the draggable divider, the split/focused display modes, CSV export,
-// and URL-hash + localStorage persistence. A classic script sharing the
-// earlier files' top-level bindings ($, esc, LAUNCHES, ENTITIES, STATS,
-// FILTER_BUILDERS, attachPager, freshFilters, rowTotal); load order is JS_FILES in pipeline/config.py.
+// CHART_DEFS or a table rendered by tables.js. Owns the pane skeleton
+// (view picker, per-view controls, pager, export, maximize), the
+// draggable divider, the split/focused display modes, CSV export, and
+// URL-hash + localStorage persistence. A classic script sharing the
+// earlier files' top-level bindings ($, esc, DATA, STATS,
+// FILTER_BUILDERS, attachPager, freshFilters, rowTotal, renderTable,
+// tableCsv); load order is JS_FILES in pipeline/config.py.
 
 // Table views join CHART_DEFS in one registry — the picker's 'Tables'
-// group and each pane's controls come from these defs. `table` names
-// the staged .table-wrap element that mountPane relocates into the
-// pane body; 'q' is the text-search filter wired below. A table's
-// markup exists exactly once, so a table view open in one pane is
-// disabled in the other pane's picker (refreshPickers).
+// group and each pane's controls come from these defs. 'q' is the
+// text-search filter wired below. Tables render per pane from
+// TABLE_SPECS in tables.js, so the same table can be open in both
+// panes (with independent sorts and searches).
 const TABLE_VIEWS = {
-  upcoming: {label: 'Upcoming launches', kind: 'Table', table: 'tab-upcoming', filters: ['q']},
-  past:     {label: 'Previous launches', kind: 'Table', table: 'tab-past',     filters: ['q']},
-  rockets:  {label: 'Rockets',           kind: 'Table', table: 'tab-rockets',  filters: ['q']},
+  upcoming: {label: 'Upcoming launches', kind: 'Table', filters: ['q']},
+  past:     {label: 'Previous launches', kind: 'Table', filters: ['q']},
+  rockets:  {label: 'Rockets',           kind: 'Table', filters: ['q']},
 };
 const VIEW_DEFS = {...CHART_DEFS, ...TABLE_VIEWS};
 const isChart = id => id in CHART_DEFS;
@@ -51,7 +51,6 @@ FILTER_BUILDERS.q = (pane, onChange) => {
 };
 
 const workspaceEl = $('workspace');
-const stagingEl = $('table-staging');
 const divider = document.createElement('div');
 divider.className = 'divider';
 divider.title = 'Drag to resize · double-click to reset';
@@ -71,9 +70,9 @@ let ratio = 0.5;       // pane A's share of the desktop split
 const paneSizer = new ResizeObserver(entries => entries.forEach(en =>
   en.target.classList.toggle('narrow', en.contentRect.width < 600)));
 
-// Rebuild a pane's view picker, one optgroup per view kind. A table
-// already open in the other pane is disabled and marked — its markup
-// can't be in two places at once (charts can repeat freely).
+// Rebuild a pane's view picker, one optgroup per view kind. Every view
+// can repeat across panes — charts mount fresh and tables render fresh
+// — so nothing is ever disabled.
 function refreshPickers() {
   for (const p of panes) {
     const kinds = [...new Set(Object.values(VIEW_DEFS).map(d => d.kind))];
@@ -83,12 +82,6 @@ function refreshPickers() {
         .map(([id, d]) => `<option value="${id}">${esc(d.label)}</option>`)
         .join('')}</optgroup>`).join('');
     p.select.value = p.defId;
-    const other = panes.find(q => q !== p);
-    for (const o of p.select.options) {
-      const taken = !!TABLE_VIEWS[o.value] && other?.defId === o.value;
-      o.disabled = taken;
-      if (taken) o.textContent += ' (open)';
-    }
   }
 }
 
@@ -139,18 +132,15 @@ function syncAxes() {
 // (Re)build a pane for its current view. Chart views get a fresh
 // .chart-pane (defs like the donut replace the pane's contents with
 // their own layout, so a leftover canvas would linger) plus that def's
-// filter controls; table views relocate the staged .table-wrap and get
-// the 'q' search box. Controls are built before chart data() runs so
-// they can seed filter defaults (the entity picker's default pick).
+// filter controls; table views render a fresh .table-wrap from
+// TABLE_SPECS and get the 'q' search box. Controls are built before
+// chart data() runs so they can seed filter defaults (the entity
+// picker's default pick).
 function mountPane(pane) {
   const def = VIEW_DEFS[pane.defId];
   pane.inst?.chart?.destroy();
   pane.inst = null;
   pane.applyFilter = null;
-  // A table leaving a pane returns to staging so the other pane can
-  // take it.
-  pane.body.querySelectorAll('.table-wrap')
-    .forEach(w => stagingEl.append(w));
   pane.body.replaceChildren();
   pane.pagerEl.hidden = true;
   pane.kindTag.textContent = def.kind;
@@ -165,12 +155,11 @@ function mountPane(pane) {
     pane.inst.setData(def.data(pane.filters));
     pane.refreshPager();
   } else {
-    pane.body.append($(def.table));
+    // The table reads pane.filters.sort/dir itself, so a restored
+    // rockets sort lands in one render.
+    pane.body.append(renderTable(pane));
     buildControls(pane, saveState);
     pane.applyFilter?.();
-    // The rockets table's sort is remembered in the view's filter state.
-    if (pane.defId === 'rockets' && pane.filters.sort)
-      sortRockets(pane.filters.sort, pane.filters.dir || 'desc');
   }
   const expLabel = isChart(pane.defId)
     ? 'Download chart as PNG' : 'Download table as CSV';
@@ -292,42 +281,12 @@ function exportPng(pane) {
   a.click();
 }
 
-// Table export mirrors the PNG button: same columns the table shows,
-// rows built from the baked JSON — ids resolve to display names via the
-// entity maps, matching what the Jinja table rendered.
-const csvCell = v => `"${String(v).replaceAll('"', '""')}"`;
-const csvRows = (head, rows) =>
-  [head, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n');
-
-function launchCsv(rows, withStatus) {
-  const head = ['Date', 'Mission', 'Provider', 'Pad',
-    ...(withStatus ? ['Status'] : [])];
-  return csvRows(head, rows.map(d => [
-    fmtLocal(d.net) || '', d.name || '',
-    ENTITIES.providers[d.provider_id]?.name || '—',
-    ENTITIES.pads[d.pad_id]?.name || '—',
-    ...(withStatus ? [d.status || 'Unknown'] : []),
-  ]));
-}
-
-const CSV_BUILDERS = {
-  upcoming: () => launchCsv(LAUNCHES.upcoming, false),
-  past:     () => launchCsv(LAUNCHES.past, true),
-  rockets:  () => csvRows(
-    ['Name', 'Provider', 'LEO capacity', 'Successful / attempted'],
-    // Same default order the Jinja table renders in.
-    [...Object.values(ENTITIES.rockets)]
-      .sort((a, b) => (b.launches || 0) - (a.launches || 0)
-        || (b.leo_capacity || 0) - (a.leo_capacity || 0)
-        || (a.name || '').localeCompare(b.name || ''))
-      .map(r => [r.name || '—', r.manufacturer || '—',
-        r.leo_capacity != null ? `${r.leo_capacity.toLocaleString()} kg` : '—',
-        r.launches != null ? `${r.successful || 0} / ${r.launches}` : '—'])),
-};
-
+// Table export mirrors the PNG button: tableCsv in tables.js builds the
+// CSV from the same column spec and row order the table shows, so the
+// export can never drift from the rendered columns.
 function exportCsv(pane) {
   const url = URL.createObjectURL(
-    new Blob([CSV_BUILDERS[pane.defId]()], {type: 'text/csv'}));
+    new Blob([tableCsv(pane)], {type: 'text/csv'}));
   const a = document.createElement('a');
   a.download = `${pane.defId}.csv`;
   a.href = url;
@@ -368,13 +327,10 @@ function serialize() {
       if (f.rockets?.size) t.push('r' + encList(f.rockets));
     } else {
       if (f.q) t.push('q' + encodeURIComponent(f.q));
-      // The rockets table's sort lives on the wrap's dataset
-      // (sortRockets writes it), so it's folded in here.
-      if (p.defId === 'rockets') {
-        const w = $('tab-rockets');
-        if (w.dataset.sort)
-          t.push('t' + w.dataset.sort + '.' + (w.dataset.dir || 'desc'));
-      }
+      // The rockets table's sort is per-pane filter state — tables.js
+      // writes {sort, dir} into it on each header click.
+      if (p.defId === 'rockets' && f.sort)
+        t.push('t' + f.sort + '.' + (f.dir || 'desc'));
     }
     return p.defId + (t.length ? ';' + t.join(';') : '');
   };
@@ -418,10 +374,6 @@ function parseState(str) {
     }
     return {v: id, f};
   });
-  // The same table in both panes is impossible (one staged node) — the
-  // second pane falls back to the default chart, which may repeat.
-  if (views[0].v === views[1].v && TABLE_VIEWS[views[0].v])
-    views[1].v = DEFAULT_VIEWS[0];
   return {
     ratio: Math.min(0.7, Math.max(0.3, (m[2] ? +m[2] : 50) / 100)),
     focus: m[3] ? +m[3] : 'split',
@@ -456,8 +408,6 @@ function defaultState() {
   ]};
 }
 
-// Mount order matters: a table moving between panes returns to staging
-// from the pane that held it before the other pane claims it.
 function applyState(s) {
   ratio = s.ratio;
   panes.forEach((p, i) => {
@@ -522,12 +472,6 @@ divider.addEventListener('dblclick', () => {
 // flex styles set while wide are cleared when the stacked layout is
 // fixed at 50/50.
 mqNarrow.addEventListener('change', applyRatio);
-
-// Sorting the rockets table is workspace state too — the delegated
-// listener runs after the th's own handler has applied the sort.
-document.querySelector('main').addEventListener('click', e => {
-  if (e.target.closest('th.sortable')) saveState();
-});
 
 // A pasted or hand-edited hash re-applies the workspace it describes.
 addEventListener('hashchange', () => {

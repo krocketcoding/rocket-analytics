@@ -1,4 +1,10 @@
-"""Curate the launch, entity, and link fields shown on the site."""
+"""Field curation specs for the normalized dataset.
+
+The API returns very large launch objects; the `*_FIELDS` specs and the
+`pick`/`pull` helpers copy just the fields the site uses into flat
+dicts. `pipeline/dataset.py` drives these specs to build the single
+JSON blob the front end ships with.
+"""
 
 
 def pick(value, key):
@@ -29,6 +35,8 @@ RECORD_FIELDS = [
     ("landings_failed", "failed_landings"), ("landing_streak", "consecutive_successful_landings"),
 ]
 
+# Providers, mission agencies, and rocket manufacturers are the same
+# shape — the dataset merges all three into one agencies table keyed by id.
 AGENCY_FIELDS = [
     "name", "abbrev", ("type", "type.name"), ("country", "country_code"), "description", "administrator",
     ("founded", "founding_year"), "launchers", "spacecraft", "info_url", "wiki_url", *RECORD_FIELDS,
@@ -46,41 +54,19 @@ PAD_FIELDS = [
     ("launches", "total_launch_count"),
 ]
 
+# Launch fields copied verbatim. status/image/infographic are absent:
+# the status becomes an id into the statuses table, and image URLs
+# become indices into the shared images table — dataset.py fills those in.
 LAUNCH_FIELDS = [
-    "name", "net", ("status", "status.name"), "window_start", "window_end", "probability",
-    ("image", "image.image_url"), ("infographic", "infographic.image_url"), "webcast_live",
-    "failreason", "holdreason", "weather_concerns", ("attempts_location", "location_launch_attempt_count"),
+    "name", "net", "window_start", "window_end", "probability", "webcast_live", "failreason", "holdreason",
+    "weather_concerns", ("attempts_location", "location_launch_attempt_count"),
     ("attempts_location_year", "location_launch_attempt_count_year"), "pad_turnaround",
 ]
 
-UPDATE_FIELDS = ["comment", "info_url", "created_on", "created_by", "profile_image"]
-
-
-def agency_detail(agency):
-    """Curated fields for a provider or mission agency."""
-    detail = pull(agency, AGENCY_FIELDS)
-    detail["image"] = pick(agency.get("image_url") or agency.get("image"), "image_url")
-    return detail
-
-
-def rocket_detail(config):
-    """Curated fields for a rocket configuration."""
-    manufacturer = config.get("manufacturer") or {}
-    return {
-        "name": config.get("full_name") or config.get("name"),
-        "manufacturer": manufacturer.get("name"),
-        "manufacturer_abbrev": manufacturer.get("abbrev"),
-        "manufacturer_country": manufacturer.get("country_code"),
-        "manufacturer_id": manufacturer.get("id"),
-        **pull(config, ROCKET_FIELDS),
-    }
-
-
-def pad_detail(pad):
-    """Curated fields for a launch pad."""
-    detail = pull(pad, PAD_FIELDS)
-    detail["location"] = pick(pad.get("location"), "name")
-    return detail
+# profile_image is absent: the author avatar URL is interned into the
+# images table once per author and resolved via authors[created_by] —
+# repeating it per update was ~1.4 MB of the old payload.
+UPDATE_FIELDS = ["comment", "info_url", "created_on", "created_by"]
 
 
 def link_details(*url_lists):
@@ -96,43 +82,3 @@ def link_details(*url_lists):
                 link["label"] = pick(entry.get("type"), "name")
             links.append(link)
     return links
-
-
-def launch_detail(launch):
-    """Pick the fields worth showing in the details modal."""
-    mission = launch.get("mission") or {}
-    return {
-        **pull(launch, LAUNCH_FIELDS),
-        "mission_name": mission.get("name"),
-        "mission_type": mission.get("type"),
-        "orbit": pick(mission.get("orbit"), "abbrev"),
-        "mission_description": mission.get("description"),
-        "mission_patches": [url for p in launch.get("mission_patches") or [] if (url := pick(p, "image_url"))],
-        "program": [pick(p, "name") for p in launch.get("program") or []],
-        # IDs into the entities dict, so the frontend can look up the
-        # provider/rocket/pad/agency details instead of embedding copies.
-        "provider_id": pick(launch.get("launch_service_provider"), "id"),
-        "rocket_id": pick(pick(launch.get("rocket"), "configuration"), "id"),
-        "pad_id": pick(launch.get("pad"), "id"),
-        "agency_ids": [a.get("id") for a in mission.get("agencies") or [] if a.get("id") is not None],
-        "updates": [pull(u, UPDATE_FIELDS) for u in launch.get("updates") or []],
-        "links": link_details(launch.get("infoURLs"), launch.get("vidURLs")),
-        "mission_links": link_details(mission.get("info_urls"), mission.get("vid_urls")),
-    }
-
-
-def collect_entities(launches):
-    """Deduplicate entity objects observed across launches, keyed by id."""
-    entities = {"providers": {}, "rockets": {}, "agencies": {}, "pads": {}}
-
-    def add(group, obj, detail_fn):
-        if obj and obj.get("id") is not None:
-            entities[group].setdefault(obj["id"], detail_fn(obj))
-
-    for launch in launches:
-        add("providers", launch.get("launch_service_provider"), agency_detail)
-        add("rockets", pick(launch.get("rocket"), "configuration"), rocket_detail)
-        for agency in pick(launch.get("mission"), "agencies") or []:
-            add("agencies", agency, agency_detail)
-        add("pads", launch.get("pad"), pad_detail)
-    return entities

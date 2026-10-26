@@ -5,9 +5,8 @@ import shutil
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from .config import CSS_FILE, JS_FILES, OFFLINE_FILE, SITE_DIR, STATIC_DIR, TEMPLATES_DIR
-from .details import collect_entities, launch_detail
+from .dataset import build_dataset
 from .offline_bundle import build_offline_bundle
-from .stats import compute_stats
 
 # Asset URLs as index.html will see them — relative to site/, matching
 # where the static directory is copied below.
@@ -16,27 +15,8 @@ JS_SRCS = [f"{STATIC_DIR.name}/{f.name}" for f in JS_FILES]
 OFFLINE_HREF = OFFLINE_FILE.name
 
 
-def build_context(upcoming, previous, entities, data_updated):
-    """Assemble the Jinja template context from launches and entities."""
-    return dict(
-        upcoming=upcoming,
-        previous=previous,
-        upcoming_detail=[launch_detail(launch) for launch in upcoming],
-        previous_detail=[launch_detail(launch) for launch in previous],
-        entities=entities,
-        # Rocket table rows ordered by launch count, then LEO capacity,
-        # then name.
-        rocket_rows=sorted(entities["rockets"].items(),
-                           key=lambda kv: (-(kv[1].get("launches") or 0),
-                                           -(kv[1].get("leo_capacity") or 0),
-                                           kv[1].get("name") or "")),
-        stats=compute_stats(entities["rockets"], previous),
-        data_updated=data_updated,
-    )
-
-
 def build_site(upcoming, previous, data_updated):
-    """Render templates and copy static assets into the site directory."""
+    """Render the page shell around the normalized dataset into site/."""
     env = Environment(loader=FileSystemLoader(TEMPLATES_DIR),
                       autoescape=select_autoescape(("html",)))
     # Preserve dict order (sorted by count) instead of tojson's sorted keys.
@@ -55,13 +35,11 @@ def build_site(upcoming, previous, data_updated):
     # Tell GitHub Pages not to run the site through Jekyll.
     (SITE_DIR / ".nojekyll").touch()
 
-    entities = collect_entities(upcoming + previous)
+    dataset = build_dataset(upcoming, previous, data_updated)
     template = env.get_template("index.html")
-    context = build_context(upcoming, previous, entities, data_updated)
     (SITE_DIR / "index.html").write_text(
-        template.render(context, css_href=CSS_HREF, js_srcs=JS_SRCS, offline_href=OFFLINE_HREF),
+        template.render(data=dataset, css_href=CSS_HREF, js_srcs=JS_SRCS, offline_href=OFFLINE_HREF),
         encoding="utf-8")
     print(f"Site built in {SITE_DIR}/")
 
-    build_offline_bundle(template, context)
-
+    build_offline_bundle(template, dataset)

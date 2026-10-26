@@ -18,17 +18,20 @@ LAUNCH_CACHE_FILE = Path("launch-cache.json")
 OFFLINE_FILE = SITE_DIR / "rocket-analytics-offline.html"
 CHARTJS_FILE = STATIC_DIR / "chart-library.min.js"
 APPJS_FILE = STATIC_DIR / "app.js"
+STATS_FILE = STATIC_DIR / "stats.js"
 CHART_FACTORIES_FILE = STATIC_DIR / "chart-factories.js"
 CHART_DEFS_FILE = STATIC_DIR / "chart-defs.js"
 CHARTS_FILE = STATIC_DIR / "charts.js"
+TABLES_FILE = STATIC_DIR / "tables.js"
 WORKSPACE_FILE = STATIC_DIR / "workspace.js"
 CSS_FILE = STATIC_DIR / "style.css"
 # Script files in load order: everything shares top-level bindings, so
 # the vendored library and app.js come first and each chart file gets
-# the globals its predecessors defined. workspace.js does the wiring, so
-# it loads last.
-JS_FILES = [CHARTJS_FILE, APPJS_FILE, CHART_FACTORIES_FILE,
-            CHART_DEFS_FILE, CHARTS_FILE, WORKSPACE_FILE]
+# the globals its predecessors defined. stats.js computes STATS from the
+# dataset before the chart code reads it, and workspace.js does the
+# wiring, so it loads last.
+JS_FILES = [CHARTJS_FILE, APPJS_FILE, STATS_FILE, CHART_FACTORIES_FILE,
+            CHART_DEFS_FILE, CHARTS_FILE, TABLES_FILE, WORKSPACE_FILE]
 
 # Images embedded in the offline build are downscaled to display size.
 PATCH_IMAGE_PX = 128   # mission patches render at 72px

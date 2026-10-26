@@ -17,17 +17,15 @@ def inline_safe(code):
     return re.sub(r"</(script|style)", r"<\\/\1", code, flags=re.IGNORECASE)
 
 
-# Remote URL fields stripped from the offline build's embedded data —
-# nothing it references should need a network connection.
-EXTERNAL_FIELDS = {"image", "infographic", "mission_patches", "profile_image",
-                   "info_url", "wiki_url", "map_url", "links", "mission_links"}
-
-# Context keys holding detail/entity payloads that need scrubbing.
-SCRUB_KEYS = {"upcoming_detail", "previous_detail", "entities"}
+# Remote URL fields stripped from the offline dataset — nothing it
+# references should need a network connection. Image fields are indices
+# into the images table and stay; the table itself swaps URLs for data
+# URIs or None.
+EXTERNAL_FIELDS = {"info_url", "wiki_url", "map_url", "links", "mission_links"}
 
 
 def scrub_external(value):
-    """Recursively remove remote image and link URLs from detail/entity data."""
+    """Recursively remove remote link URLs from dataset records."""
     if isinstance(value, dict):
         return {k: scrub_external(v) for k, v in value.items() if k not in EXTERNAL_FIELDS}
     if isinstance(value, list):
@@ -102,38 +100,37 @@ def embed_images(urls_px):
     return images
 
 
-def offline_context(context):
-    """Offline variant of the context: remote URLs stripped, except mission patches and rocket
-    images, which are embedded as data URIs."""
-    # Collect the images worth inlining before scrub_external removes them.
+def offline_dataset(dataset):
+    """Offline variant of the dataset: remote link URLs are stripped and the
+    images table swaps wanted URLs for embedded data URIs, leaving None
+    elsewhere — indices stay stable so records need no changes."""
+    # Mission patches and rocket photos are the images worth their bytes.
+    # Rocket size wins if an image serves both roles.
     wanted = {}
-    for d in context["upcoming_detail"] + context["previous_detail"]:
-        wanted.update((u, PATCH_IMAGE_PX) for u in d.get("mission_patches") or [])
-    for rocket in context["entities"]["rockets"].values():
-        if rocket.get("image"):
+    for d in dataset["upcoming"] + dataset["previous"]:
+        for i in d.get("mission_patches") or []:
+            wanted[i] = PATCH_IMAGE_PX
+    for rocket in dataset["rockets"].values():
+        if rocket.get("image") is not None:
             wanted[rocket["image"]] = ROCKET_IMAGE_PX
 
-    # Data URIs go in one shared map (the data-images JSON block) so a
-    # patch reused across launches is embedded once, not per launch.
-    images = embed_images(wanted)
-    print(f"Collected {len(images)}/{len(wanted)} images "
-          f"({sum(len(u) for u in images.values()) // 1024} KB after compression)")
+    embedded = embed_images({dataset["images"][i]: px for i, px in wanted.items()})
+    print(f"Collected {len(embedded)}/{len(wanted)} images "
+          f"({sum(len(u) for u in embedded.values()) // 1024} KB after compression)")
 
-    offline = {k: scrub_external(v) if k in SCRUB_KEYS else v for k, v in context.items()}
-    # Re-add just the embedded images to the scrubbed structures.
-    for group in ("upcoming_detail", "previous_detail"):
-        for src, dst in zip(context[group], offline[group]):
-            patches = [u for u in src.get("mission_patches") or [] if u in images]
-            if patches:
-                dst["mission_patches"] = patches
-    for rid, rocket in context["entities"]["rockets"].items():
-        if rocket.get("image") in images:
-            offline["entities"]["rockets"][rid]["image"] = rocket["image"]
+    images = [None] * len(dataset["images"])
+    for i in wanted:
+        uri = embedded.get(dataset["images"][i])
+        if uri:
+            images[i] = uri
+
+    offline = {k: scrub_external(v) for k, v in dataset.items() if k != "images"}
     offline["images"] = images
+    offline["meta"] = {**offline["meta"], "offline": True}
     return offline
 
 
-def build_offline_bundle(template, context):
+def build_offline_bundle(template, dataset):
     """Render the site again as one offline HTML file with CSS, JS, and key images inlined."""
     try:
         js = "\n".join(f.read_text(encoding="utf-8") for f in JS_FILES)
@@ -141,7 +138,7 @@ def build_offline_bundle(template, context):
     except OSError:
         print(f"Warning: Skipping {OFFLINE_FILE}.")
         return
-    offline = offline_context(context)
-    html = template.render(offline, offline=True, inline_css=inline_safe(css), inline_js=inline_safe(js))
+    offline = offline_dataset(dataset)
+    html = template.render(data=offline, offline=True, inline_css=inline_safe(css), inline_js=inline_safe(js))
     OFFLINE_FILE.write_text(html, encoding="utf-8")
     print(f"Offline single-file build written to {OFFLINE_FILE}")
