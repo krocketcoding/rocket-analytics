@@ -144,7 +144,7 @@ const GROUPS = {
 // (the comment on CHART_DEFS): Bars pages a stacked category chart,
 // Donut flattens rows to {label: count} slices, Trend charts one
 // series per entity pick.
-const barDef = g => ({label: g.label, kind: 'Bars', filters: ['year', ...g.filters], countryMap: g.countryMap,
+const barDef = g => ({label: g.label, kind: 'Bars', filters: ['year', ...g.filters, 'pageSize'], countryMap: g.countryMap,
                       entities: g.entities, unit: 'launches', data: g.rows,
                       mount: pane => stackedBarChart(pane.querySelector('canvas'), g.names)});
 const donutDef = g => ({label: g.label, kind: 'Donut', filters: ['year', ...g.filters, 'success'], countryMap: g.countryMap,
@@ -159,15 +159,15 @@ const trendDef = g => ({label: g.label, kind: 'Trend', filters: ['entity', 'succ
                         mount: pane => lineChart(pane.querySelector('canvas'), g.names)});
 
 // Bars def for a grouping that can swap its stack between launch
-// categories and per-variant segments — 'variant' is always the last
-// filter. `nested` maps filter state to {group: {rocket: cats}} rows.
-// The country filter applies only when the def opts in: a pane's
-// country picks persist across defs, so an unconditional filter would
-// wrongly prune charts that never offer it. topCat re-sorts regrouped
-// rows by total like the stats build's bucket order.
+// categories and per-variant segments. `nested` maps filter state to
+// {group: {rocket: cats}} rows. The country filter applies only when
+// the def opts in: a pane's country picks persist across defs, so an
+// unconditional filter would wrongly prune charts that never offer it.
+// topCat re-sorts regrouped rows by total like the stats build's
+// bucket order.
 const variantBarDef = (label, nested, {filters = [], countryMap, names, entities} = {}) => ({
   label, kind: 'Bars',
-  filters: ['year', ...filters, 'variant'],
+  filters: ['year', ...filters, 'variant', 'pageSize'],
   countryMap, entities, unit: 'launches',
   data: s => {
     let rows = nested(s);
@@ -182,7 +182,9 @@ const variantBarDef = (label, nested, {filters = [], countryMap, names, entities
 // under an optgroup heading. Each def lists the filters it supports
 // (each name renders a control in the pane header), maps a filter-state
 // object {year, country, successOnly, cumulative, variantStack,
-// entities, rockets} to its dataset, and mounts a chart object inside
+// entities, rockets} to its dataset ('pageSize' lives there too but
+// configures the paged view, not the data), and mounts a chart object
+// inside
 // a .chart-pane — the pager shows only when the instance's pageCount()
 // exceeds 1. Optional def fields: `countryMap` picks the label->code
 // map the country filter lists, and `rowMax` overrides rowTotal when a

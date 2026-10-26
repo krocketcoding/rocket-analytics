@@ -106,9 +106,11 @@ charts — happens in JavaScript from that single block; Jinja only renders the 
     family rows keeping a nested per-rocket tally so the rocket filter and variant stacking can re-slice them.
     The oldest year is dropped when `meta.truncated` flags that the newest-first fetch was cut mid-year at
     the page cap; the launch tables keep its real rows but flag the year as partial in the row-count note.
-  - `chart-factories.js` — the Chart.js factories and the chart view contract (page, pageCount, setPage, setData).
+  - `chart-factories.js` — the Chart.js factories and the chart view contract (page, pageCount, setPage,
+    setPageSize, setData).
   - `chart-defs.js` — the CHART_DEFS registry and its data-slicing helpers.
-  - `charts.js` — the per-pane filter controls (year scope, country/rocket/entity popovers, toggles) and pager.
+  - `charts.js` — the per-pane filter controls (year scope, country/rocket/entity popovers, toggles, rows per
+    page) and pager.
   - `tables.js` — the table views and their CSV export (one column spec drives both); the launch tables are
     scoped by year.
   - `workspace.js` — the two-pane workspace: view pickers, divider drag, maximize, PNG/CSV export, and

@@ -283,6 +283,30 @@ const FILTER_BUILDERS = {
     slot.filters.variantStack ? 'Rocket variants' : 'Launch categories',
     v => { slot.filters.variantStack = v === 'Rocket variants'; reload(); },
     ['Launch categories', 'Rocket variants']),
+  // Rows-per-page select for the paged bar charts. Unlike every other
+  // filter it configures the view, not the dataset — data() never reads
+  // it — so the builder reslices the mounted instance itself, both on
+  // build (a restored pick applies before the mount setData) and on
+  // change; reload() only persists.
+  pageSize: (slot, reload) => {
+    const sel = document.createElement('select');
+    sel.className = 'chart-pick';
+    sel.setAttribute('aria-label', 'Rows per page');
+    PAGE_SIZES.forEach(n => {
+      const o = document.createElement('option');
+      o.value = n;
+      o.textContent = `${n} per page`;
+      sel.append(o);
+    });
+    sel.value = slot.filters.pageSize;
+    slot.inst.setPageSize(slot.filters.pageSize);
+    sel.addEventListener('change', () => {
+      slot.filters.pageSize = +sel.value;
+      slot.inst.setPageSize(+sel.value);
+      reload();
+    });
+    return sel;
+  },
   // Multi-select entity picker for trend charts: filters.entities is
   // a Set that can never empty — a trend with no series would render
   // blank — so keepOne refuses the last uncheck and Reset returns to
@@ -349,9 +373,10 @@ function attachPager(els, getChart) {
 }
 
 // A pane's chart filter state: year scope, the country picker's
-// {codes, negate} selection, the boolean toggles, and two Sets — the
-// trend entity multi-pick and the site charts' rocket filter.
+// {codes, negate} selection, the boolean toggles, the bar chart's rows
+// per page, and two Sets — the trend entity multi-pick and the site
+// charts' rocket filter.
 const freshFilters = year => ({year,
   country: {codes: new Set(), negate: false}, successOnly: false,
-  cumulative: false, variantStack: false, entities: new Set(),
-  rockets: new Set()});
+  cumulative: false, variantStack: false, pageSize: PAGE_SIZE,
+  entities: new Set(), rockets: new Set()});

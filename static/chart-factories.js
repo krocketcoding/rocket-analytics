@@ -7,26 +7,34 @@
 Chart.defaults.color = '#9ca3af';
 Chart.defaults.borderColor = '#1f2937';
 
+// Default rows per chart page; the 'pageSize' filter offers every
+// PAGE_SIZES value — controls persist it, so the default stays the
+// restore fallback rather than the only choice.
 const PAGE_SIZE = 10;
+const PAGE_SIZES = [5, 10, 20, 30];
 
 // Paging wrapper shared by the chart factories: slices a {label: row}
-// dataset PAGE_SIZE rows at a time and lets `fill` load the visible rows
+// dataset pageSize rows at a time and lets `fill` load the visible rows
 // into the chart's datasets. The caller hides the pager when
 // pageCount() is 1.
 function pagedView(chart, fill) {
-  let full = {}, page = 0;
+  let full = {}, page = 0, pageSize = PAGE_SIZE;
   const pageCount = () =>
-    Math.max(1, Math.ceil(Object.keys(full).length / PAGE_SIZE));
+    Math.max(1, Math.ceil(Object.keys(full).length / pageSize));
   const setPage = p => {
     page = Math.max(0, Math.min(p, pageCount() - 1));
     const entries = Object.entries(full)
-      .slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+      .slice(page * pageSize, (page + 1) * pageSize);
     chart.data.labels = entries.map(([k]) => k);
     fill(entries);
     chart.update();
   };
+  // A size change keeps the current page (clamped to the new count);
+  // the next setData resets to page 0 anyway.
+  const setPageSize = n => { pageSize = n; setPage(page); };
   const setData = d => { full = d; setPage(0); };
-  return {chart, get page() { return page; }, pageCount, setPage, setData};
+  return {chart, get page() { return page; }, pageCount, setPage,
+    setPageSize, setData};
 }
 
 // Non-paged charts share the same one-page contract so slot code treats
@@ -40,7 +48,7 @@ function singleView(chart, fill) {
     chart.update();
   };
   return {chart, setData, get page() { return 0; },
-    pageCount: () => 1, setPage() {}};
+    pageCount: () => 1, setPage() {}, setPageSize() {}};
 }
 
 // Chart labels are abbreviations; tooltips show the full name.

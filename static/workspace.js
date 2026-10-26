@@ -412,7 +412,8 @@ function exportCsv(pane) {
 // percent-encoded names, which keeps ; | @ ^ and , safe as separators.
 // Token keys — y: year scope (charts and the past-launches table);
 // c: country codes (! = exclude); e: entity picks; r: rocket picks;
-// so/cm/vs: successes-only/cumulative/variant toggles; q: table search;
+// so/cm/vs: successes-only/cumulative/variant toggles; ps: bar-chart
+// rows per page; q: table search;
 // t: rockets sort as <key>.<dir>. The same string is kept in
 // localStorage so the layout survives between visits; the hash wins
 // on load.
@@ -436,6 +437,7 @@ const paneTokens = p => {
     if (f.variantStack) t.push('vs');
     if (f.entities?.size) t.push('e' + encList(f.entities));
     if (f.rockets?.size) t.push('r' + encList(f.rockets));
+    if (f.pageSize && f.pageSize !== PAGE_SIZE) t.push('ps' + f.pageSize);
   } else {
     if (f.q) t.push('q' + encodeURIComponent(f.q));
     // The past table carries a year scope too — a non-default pick
@@ -495,6 +497,10 @@ function parseState(str) {
       }
       else if (t[0] === 'e') f.entities = new Set(decList(t.slice(1)));
       else if (t[0] === 'r') f.rockets = new Set(decList(t.slice(1)));
+      // Sizes outside the offered list are ignored like any other
+      // stale token.
+      else if (/^ps\d+$/.test(t) && PAGE_SIZES.includes(+t.slice(2)))
+        f.pageSize = +t.slice(2);
       else if (t[0] === 'q') f.q = decodeURIComponent(t.slice(1));
       else if (/^t\w+\.(asc|desc)$/.test(t)) {
         const [k, d] = t.slice(1).split('.');
