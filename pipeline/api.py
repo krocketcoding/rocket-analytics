@@ -16,7 +16,7 @@ def get_json(endpoint, params):
     error = None
     for attempt in range(MAX_ATTEMPTS):
         try:
-            response = requests.get(f"{API_BASE}/launch/{endpoint}/", params=params, timeout=30)
+            response = requests.get(f"{API_BASE}/launch/{endpoint}/", params=params, timeout=60)
             response.raise_for_status()
             return response.json()
         except requests.RequestException as e:
