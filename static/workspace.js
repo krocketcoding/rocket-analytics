@@ -192,8 +192,12 @@ function reloadPane(pane) {
 // hard max produced ugly ticks) while never dropping below it.
 function syncAxes() {
   const charts = panes.filter(p => isChart(p.defId) && p.inst);
+  // Both axis syncs exist to make side-by-side comparison honest — a
+  // maximized pane stands alone, so neither applies outside the split.
+  const sharing = focus === 'split';
   const units = charts.map(p => CHART_DEFS[p.defId].unit);
-  const shared = charts.length === 2 && units[0] && units[0] === units[1];
+  const shared = sharing && charts.length === 2 && units[0]
+    && units[0] === units[1];
   // Defs whose data rows aren't {label: count} (multi-series trends)
   // provide rowMax to say what one row contributes to the bound.
   const max = shared
@@ -211,7 +215,7 @@ function syncAxes() {
   // sync, which would keep the shared axis from re-shrinking. Any
   // other pairing restores each trend's own domain.
   const trends = charts.filter(p => CHART_DEFS[p.defId].kind === 'Trends');
-  const sharedYears = trends.length === 2
+  const sharedYears = sharing && trends.length === 2
     ? [...new Set(trends.flatMap(p =>
         p.inst.ownLabels ?? p.inst.chart.data.labels))].sort()
     : undefined;
@@ -384,6 +388,9 @@ function setFocus(f) {
   // A pane revealed or resized by the mode change needs its chart to
   // reflow — mounted-while-hidden charts stay at 0×0 otherwise.
   panes.forEach(p => { if (!p.el.hidden) p.inst?.chart.resize(); });
+  // The axis syncs only apply in split mode — toggling focus has to
+  // re-evaluate them, not leave a stale shared bound on a lone pane.
+  syncAxes();
 }
 
 // Export

@@ -11,7 +11,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const {makeData} = require('./fixtures');
+const {makeData, launch} = require('./fixtures');
 
 const DIR = path.join(__dirname, '..', 'static');
 const read = f => fs.readFileSync(path.join(DIR, f), 'utf8');
@@ -90,7 +90,7 @@ function loadApp(data) {
   vm.runInContext(src + `
 this.__x = {
   get panes() { return panes; },
-  parseState, serialize, applyState, loadState, defaultState,
+  parseState, serialize, applyState, setFocus, loadState, defaultState,
   esc, fmtDuration, isWebUrl, imgSrc, num, yesNo,
   DATA, STATS, CHART_DEFS, VIEW_DEFS, LAUNCH_SCOPES, freshFilters,
 };`, sandbox);
@@ -204,4 +204,43 @@ test('parseState tolerates malformed input', () => {
 test('LAUNCH_SCOPES lists the past table years newest-first', () => {
   const x = loadApp(makeData());
   assert.deepEqual(norm(x.LAUNCH_SCOPES.past), ['2025', '2024']);
+});
+
+test('maximizing a pane disables both axis syncs', () => {
+  // Four launch years so the two trend panes get genuinely different
+  // trimmed domains: LateComer flew 2025-2026, SubOrb only 2024.
+  const data = makeData({previous: [
+    ...makeData().previous,
+    launch({name: 'LC-1', net: '2025-11-01T00:00:00Z', rocket_id: 8}),
+    launch({name: 'LC-2', net: '2026-01-15T00:00:00Z', rocket_id: 8}),
+    launch({name: 'OO-2', net: '2023-02-02T00:00:00Z', rocket_id: 3}),
+  ]});
+  data.rockets[8] = {name: 'LateComer', manufacturer_id: 10,
+                     family: 'Late', leo_capacity: 5, launches: 2,
+                     successful: 2};
+  const x = loadApp(data);
+  x.applyState({ratio: 0.5, focus: 'split', views: [
+    {v: 'by-rocket-trend', f: {entities: new Set(['LateComer'])}},
+    {v: 'by-manufacturer-trend', f: {entities: new Set(['SubOrb'])}},
+  ]});
+  const y0 = x.panes[0].inst.chart.options.scales.y;
+  // Split: both trends share the union of their trimmed domains and a
+  // shared y bound.
+  assert.deepEqual(norm(x.panes[0].inst.chart.data.labels),
+                   ['2023', '2024', '2025', '2026']);
+  assert.deepEqual(norm(x.panes[1].inst.chart.data.labels),
+                   ['2023', '2024', '2025', '2026']);
+  assert.ok(y0.suggestedMax > 0);
+  // Maximized: each trend falls back to its own domain and a free y.
+  x.setFocus(0);
+  assert.deepEqual(norm(x.panes[0].inst.chart.data.labels),
+                   ['2024', '2025', '2026']);
+  assert.deepEqual(norm(x.panes[1].inst.chart.data.labels),
+                   ['2023', '2024', '2025']);
+  assert.equal(y0.suggestedMax, undefined);
+  // Back to split: both syncs re-apply.
+  x.setFocus('split');
+  assert.deepEqual(norm(x.panes[0].inst.chart.data.labels),
+                   ['2023', '2024', '2025', '2026']);
+  assert.ok(y0.suggestedMax > 0);
 });
