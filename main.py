@@ -16,7 +16,13 @@ def main():
     parser.add_argument("--max-cache-age", type=float, metavar="HOURS",
                         help="refetch if the cache is older than this many "
                              "hours (default: use the cache regardless of age)")
+    parser.add_argument("--upcoming-pages", type=int, default=UPCOMING_LAUNCH_PAGES, metavar="N",
+                        help=f"pages of upcoming launches to fetch (default: {UPCOMING_LAUNCH_PAGES})")
+    parser.add_argument("--previous-pages", type=int, default=PAST_LAUNCH_PAGES, metavar="N",
+                        help=f"pages of previous launches to fetch (default: {PAST_LAUNCH_PAGES})")
     args = parser.parse_args()
+    if min(args.upcoming_pages, args.previous_pages) < 1:
+        parser.error("page counts must be at least 1")
 
     max_age = timedelta(hours=args.max_cache_age) if args.max_cache_age is not None else None
     cached = None if args.refresh else load_cache(max_age)
@@ -25,10 +31,10 @@ def main():
         print(f"Using cached data: {len(upcoming)} upcoming, {len(previous)} previous launches from {last_updated}")
     else:
         try:
-            print(f"Fetching upcoming launches ({UPCOMING_LAUNCH_PAGES} pages)...")
-            upcoming = fetch_launches("upcoming", UPCOMING_LAUNCH_PAGES)
-            print(f"Fetching previous launches ({PAST_LAUNCH_PAGES} pages)...")
-            previous = fetch_launches("previous", PAST_LAUNCH_PAGES)
+            print(f"Fetching upcoming launches ({args.upcoming_pages} pages)...")
+            upcoming = fetch_launches("upcoming", args.upcoming_pages)
+            print(f"Fetching previous launches ({args.previous_pages} pages)...")
+            previous = fetch_launches("previous", args.previous_pages)
         except Exception as e:
             # A failed build is worse than stale data: fall back to
             # whatever cache exists, no matter its age.

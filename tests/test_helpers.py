@@ -4,6 +4,7 @@ Run from the repo root with: python -m unittest discover tests
 """
 
 import json
+import os
 import tempfile
 import unittest
 from datetime import timedelta
@@ -13,7 +14,7 @@ from unittest import mock
 import requests
 
 from pipeline.api import get_json
-from pipeline.config import MAX_ATTEMPTS, RETRY_DELAY
+from pipeline.config import API_KEY_ENV, MAX_ATTEMPTS, RETRY_DELAY
 from pipeline.dataset import drop_empty
 from pipeline.details import link_details, pick, pull
 from pipeline.launch_cache import load_cache, save_cache
@@ -166,3 +167,19 @@ class GetJsonTest(unittest.TestCase):
             get_json("previous", {})
         self.assertEqual(get.call_count, MAX_ATTEMPTS)
         self.assertEqual(sleep.call_count, MAX_ATTEMPTS - 1)
+
+    def test_api_key_env_var_sends_token_header(self):
+        get, _ = self._run([self._response(200, b'{"ok": 1}')])
+        with mock.patch.dict(os.environ, {API_KEY_ENV: "secret"}):
+            get_json("previous", {})
+        self.assertEqual(get.call_args.kwargs["headers"],
+                         {"Authorization": "Token secret"})
+
+    def test_no_api_key_sends_no_auth_header(self):
+        get, _ = self._run([self._response(200, b'{"ok": 1}')])
+        # patch.dict restores the environment afterwards; pop covers the
+        # case where the key is set in the developer's real environment.
+        with mock.patch.dict(os.environ):
+            os.environ.pop(API_KEY_ENV, None)
+            get_json("previous", {})
+        self.assertEqual(get.call_args.kwargs["headers"], {})

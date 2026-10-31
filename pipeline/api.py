@@ -1,10 +1,11 @@
 """Fetch launch data from the Launch Library 2 API."""
 
+import os
 import time
 
 import requests
 
-from .config import API_BASE, MAX_ATTEMPTS, PAGE_SIZE, RETRY_DELAY
+from .config import API_BASE, API_KEY_ENV, MAX_ATTEMPTS, PAGE_SIZE, RETRY_DELAY
 
 
 def get_json(endpoint, params):
@@ -13,10 +14,14 @@ def get_json(endpoint, params):
     Only transient failures are retried — connection errors, timeouts,
     and 5xx. A 4xx (notably 429 rate limiting) raises immediately:
     retrying just burns more of LL2's small hourly quota."""
+    # LL2 authenticates with a "Token"-scheme header; without a key the
+    # request counts against the anonymous per-IP rate limit.
+    api_key = os.environ.get(API_KEY_ENV)
+    headers = {"Authorization": f"Token {api_key}"} if api_key else {}
     error = None
     for attempt in range(MAX_ATTEMPTS):
         try:
-            response = requests.get(f"{API_BASE}/launch/{endpoint}/", params=params, timeout=60)
+            response = requests.get(f"{API_BASE}/launch/{endpoint}/", params=params, headers=headers, timeout=60)
             response.raise_for_status()
             return response.json()
         except requests.RequestException as e:

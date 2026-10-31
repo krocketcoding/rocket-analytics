@@ -2,13 +2,16 @@
 
 from pathlib import Path
 
-PAST_LAUNCH_PAGES = 12
+PAST_LAUNCH_PAGES = 10
 UPCOMING_LAUNCH_PAGES = 2
 PAGE_SIZE = 100
 MAX_ATTEMPTS = 2
 RETRY_DELAY = 10  # seconds between retries of a transient API failure
 
 API_BASE = "https://ll.thespacedevs.com/2.2.0"
+# Optional TheSpaceDevs API key, read from this environment variable.
+# Anonymous requests share a small per-IP rate limit; a key raises it.
+API_KEY_ENV = "LL2_API_KEY"
 # Paths anchor to the repo root so the build and tests work from any
 # working directory, not just the repo root.
 ROOT = Path(__file__).resolve().parent.parent

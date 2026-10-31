@@ -1,9 +1,9 @@
 # Rocket Analytics
 
-A vibe coded rocket launch analytics dashboard. Python fetches launch data from the
+A vibe coded rocket launch analytics dashboard. The Python build pipeline fetches launch data from the
 [Launch Library 2](https://thespacedevs.com/llapi) API and normalizes it into one dataset; everything you see —
-charts, tables, modals — is rendered in JavaScript from that data, while Jinja is only a small page shell. Hosted
-on GitHub Pages and automatically updated via GitHub Actions every 6 hours.
+charts, tables, modals — is rendered in JavaScript from that data. Hosted on GitHub Pages and automatically updated
+via GitHub Actions every 6 hours.
 
 [See it here](https://krocketcoding.github.io/rocket-analytics/)
 
@@ -11,17 +11,20 @@ on GitHub Pages and automatically updated via GitHub Actions every 6 hours.
 
 ```bash
 pip install -r requirements.txt
-python main.py                    # builds into site/
-python main.py --refresh          # ignore the API response cache
-python main.py --max-cache-age 5  # refetch if the cache is over 5 hours old
-python -m unittest discover tests # run the Python unit tests
-node --test                       # JS tests: stats invariants + script bundle check (needs a prior build)
+python main.py                      # builds the site in the site/ directory
+python main.py --refresh            # ignore the API response cache
+python main.py --max-cache-age 5    # refetch if the cache is over 5 hours old
+python main.py --previous-pages 5   # override the per-endpoint page counts (--upcoming-pages works the same way)
+python -m unittest discover tests   # run the Python unit tests
+node --test                         # JS tests: stats invariants + script bundle check (needs a prior build)
 ```
 
 Fetched launch data is cached in `launch-cache.json` (git ignored) and reused regardless of age unless `--refresh` or
 `--max-cache-age` says otherwise, so repeated builds during development don't re-hit the rate-limited API. If a fetch
-fails, the script falls back to the stale cache rather than failing the build. The number of pages fetched per endpoint
-is set by `PAST_LAUNCH_PAGES` and `UPCOMING_LAUNCH_PAGES` at the top of `pipeline/config.py` (100 launches per page).
+fails, the script falls back to the stale cache rather than failing the build. Each endpoint fetches
+`PAST_LAUNCH_PAGES`/`UPCOMING_LAUNCH_PAGES` pages by default (set in `pipeline/config.py`, 100 launches per page);
+`--upcoming-pages` and `--previous-pages` override that for a single run. Set the `LL2_API_KEY` environment variable
+to authenticate with a TheSpaceDevs API key — the anonymous per-IP rate limit is small, and a key raises it.
 
 Open `site/index.html` in a browser to preview. Launch update text ships separately as `site/launch-updates.js`:
 it's roughly half the gzipped dataset but is only read when a launch's Updates tab opens, so the page loads it
@@ -47,7 +50,8 @@ offline build is skipped if a static file is missing.
   push to `master`, every 6 hours on a schedule, and on manual dispatch.
 - The workflow runs `main.py --max-cache-age 5` and persists `launch-cache.json` and `image-cache/` between runs via
   `actions/cache` (one `data-cache-` entry), so push-triggered rebuilds within 5 hours of the last fetch skip the API
-  entirely while the 6-hourly schedule always refreshes.
+  entirely while the 6-hourly schedule always refreshes. It passes the `LL2_API_KEY` repository secret to the API
+  fetch when one is configured; with no secret the build stays on the anonymous rate limit.
 - After the build, CI runs both test suites (`python -m unittest discover tests` and `node --test`); a failure stops
   the deploy before the artifact uploads.
 - Workflow runs share a `pages` concurrency group: pushes cancel any in-progress run so the newest commit deploys
@@ -79,10 +83,11 @@ charts — happens in JavaScript from that single block; Jinja only renders the 
 
 - `main.py` — command-line entry point. Decides between cached data and a fresh fetch, then hands everything to the
   builder.
-- `pipeline/config.py` — all tunables and file locations in one place (page counts, API base URL, directory paths).
+- `pipeline/config.py` — all tunables and file locations in one place (page counts, API base URL and key env var,
+  directory paths).
   Start here to change how much data is fetched or where things live.
-- `pipeline/api.py` — paginated requests to the Launch Library 2 API with retries. The API returns 100 launches per
-  page plus a `next` link.
+- `pipeline/api.py` — paginated requests to the Launch Library 2 API with retries; sends an `Authorization: Token`
+  header when `LL2_API_KEY` is set. The API returns 100 launches per page plus a `next` link.
 - `pipeline/launch_cache.py` — reads/writes `launch-cache.json` so development builds don't re-hit the rate-limited
   API.
 - `pipeline/details.py` — selects which API fields the site actually uses. The API returns very large launch objects;
