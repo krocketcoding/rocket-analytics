@@ -90,6 +90,17 @@ const scopedLaunches = (list, set, year) =>
 const PARTIAL_YEAR = DATA.meta.truncated
   ? DATA.previous.at(-1)?.net?.slice(0, 4) : null;
 
+// The dataset's first launch — the previous list is newest-first, so
+// it sits at the tail. The rockets note cites its date so "observed"
+// reads as a concrete window rather than an open-ended claim. Formatted
+// once: date-only, since a note doesn't need the time.
+const FIRST_LAUNCH_DATE = (() => {
+  const net = DATA.previous.at(-1)?.net;
+  return net
+    ? new Date(net).toLocaleDateString(undefined, {dateStyle: 'medium'})
+    : null;
+})();
+
 // Each spec produces {rec, set, key} rows: set/key become the
 // data-set/data-idx (launches) or data-id (rockets) attributes the
 // row-click modal lookup in app.js keys off.
@@ -109,7 +120,8 @@ const TABLE_SPECS = {
   rockets: {
     cols: rocketCols,
     rows: rocketRows,
-    note: (pane, n) => `Showing ${n} rockets observed in the listed launches`,
+    note: (pane, n) => `Showing ${n} rockets observed in launches` +
+      (FIRST_LAUNCH_DATE ? ` since ${FIRST_LAUNCH_DATE}` : ''),
   },
 };
 
