@@ -1,0 +1,11 @@
+{
+  "name": "rocket-analytics",
+  "private": true,
+  "description": "Static launch-analytics dashboard built from the Launch Library 2 API",
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

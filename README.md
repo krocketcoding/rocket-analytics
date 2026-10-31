@@ -16,7 +16,7 @@ python main.py --refresh            # ignore the API response cache
 python main.py --max-cache-age 5    # refetch if the cache is over 5 hours old
 python main.py --previous-pages 5   # override the per-endpoint page counts (--upcoming-pages works the same way)
 python -m unittest discover tests   # run the Python unit tests
-node --test                         # JS tests: stats invariants + script bundle check (needs a prior build)
+node --test                         # run the JS test suite (npm test does the same; needs a prior build for two files)
 ```
 
 Fetched launch data is cached in `launch-cache.json` (git ignored) and reused regardless of age unless `--refresh` or
@@ -83,6 +83,8 @@ charts — happens in JavaScript from that single block; Jinja only renders the 
 
 - `main.py` — command-line entry point. Decides between cached data and a fresh fetch, then hands everything to the
   builder.
+- `package.json` — no dependencies; it only provides `npm test` (alias for `node --test`) and a Node version
+  floor for the JS test suite.
 - `pipeline/config.py` — all tunables and file locations in one place (page counts, API base URL and key env var,
   directory paths).
   Start here to change how much data is fetched or where things live.
@@ -128,6 +130,17 @@ charts — happens in JavaScript from that single block; Jinja only renders the 
     load/save, and API retry behavior.
   - `stats.test.js` — Node test asserting the chart-stat invariants on the built `site/index.html`.
   - `scripts.test.js` — Node test concatenating the classic scripts to catch top-level name collisions.
+  - `fixtures.js` — shared miniature `DATA` dataset the unit-style Node tests load into a vm sandbox.
+  - `compute-stats.test.js` — unit tests for `stats.js`'s `computeStats` against the fixture: categories,
+    grouping shapes, truncation, `orbitCapable`, and the country/site/family maps.
+  - `chart-helpers.test.js` — unit tests for `chart-defs.js`'s data slicers (country/orbital filters, donut
+    and trend slicing, site/family/manufacturer regrouping) and `chart-factories.js`'s paging and
+    segment-stack logic.
+  - `trend-domain.test.js` — unit tests for the trend chart's year trimming and the shared-domain contract
+    (`setXLabels`/`ownLabels`) the side-by-side x-axis sync relies on.
+  - `app-boot.test.js` — boots the front end over a stub DOM, then tests the URL-hash persistence
+    (`serialize`/`parseState` round-trip and malformed-input tolerance) and the small helpers
+    (`esc`, `isWebUrl`, `fmtDuration`, `imgSrc`).
 - `api-examples/` — sample API responses. Open these to see the raw shape of a launch record before `dataset.py`
   normalizes it.
 
