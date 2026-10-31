@@ -91,14 +91,12 @@ function addPopSearch(pop) {
 //   onChange   fired after any state change
 //   reset()    mutates state, returns whether anything changed — the
 //              checkboxes re-sync to sel and emit fires only then
-//   keepOne    the last checked box refuses to uncheck (trend charts
-//              would render blank with no series)
 //   extraRows  rows inserted between the search box and the options —
 //              an array, or a function of emit() for rows that fire
 //              changes themselves (the country picker's negate toggle)
 function makeCheckPopover(opts) {
   const {title, resetLabel = 'Clear', options, sel, summary, active,
-         onChange, reset, keepOne = false, extraRows = []} = opts;
+         onChange, reset, extraRows = []} = opts;
   const wrap = document.createElement('div');
   wrap.className = 'pick-filter';
   const btn = document.createElement('button');
@@ -132,10 +130,6 @@ function makeCheckPopover(opts) {
     cb.type = 'checkbox';
     cb.checked = sel.has(v);
     cb.addEventListener('change', () => {
-      if (keepOne && !cb.checked && sel.size === 1) {
-        cb.checked = true;
-        return;
-      }
       cb.checked ? sel.add(v) : sel.delete(v);
       emit();
     });
@@ -336,11 +330,10 @@ const FILTER_BUILDERS = {
     });
     return sel;
   },
-  // Multi-select entity picker for trend charts: filters.entities is
-  // a Set that can never empty — a trend with no series would render
-  // blank — so keepOne refuses the last uncheck and Reset returns to
-  // the def's defaultEntity instead of clearing. Stale picks from a
-  // previous def in this pane are pruned first.
+  // Multi-select entity picker for trend charts: filters.entities
+  // starts empty — a trend pane's default state charts no series —
+  // so an empty selection is legal and Reset clears back to it.
+  // Stale picks from a previous def in this pane are pruned first.
   entity: (slot, reload) => {
     const def = CHART_DEFS[slot.defId];
     const list = def.entities();
@@ -348,21 +341,24 @@ const FILTER_BUILDERS = {
     const nameOf = new Map(list);
     const sel = slot.filters.entities = new Set(
       [...slot.filters.entities].filter(v => valid.has(v)));
-    const fallback = () => def.defaultEntity ?? list[0][0];
-    if (!sel.size) sel.add(fallback());
     return makeCheckPopover({
-      title: 'Entities', resetLabel: 'Reset', keepOne: true,
+      // The popover heading names what is being picked — the grouping's
+      // plural ('Rockets', 'Manufacturers', 'Countries').
+      title: def.plural || 'Entities', resetLabel: 'Reset',
       options: list, sel,
-      reset: () => { sel.clear(); sel.add(fallback()); return true; },
+      reset: () => {
+        if (!sel.size) return false;
+        sel.clear();
+        return true;
+      },
       summary: () => {
         const names = [...sel].map(v => nameOf.get(v));
-        return {text: names.length <= 2 ? names.join(', ')
+        return {text: !names.length ? 'Select…'
+                  : names.length <= 2 ? names.join(', ')
                   : `${names[0]} +${names.length - 1}`,
                 title: names.join(', ')};
       },
-      // The picker always carries the accent — it always has a
-      // selection, since one is mandatory.
-      active: () => true,
+      active: () => sel.size > 0,
       onChange: reload,
     });
   },

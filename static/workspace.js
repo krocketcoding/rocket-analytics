@@ -203,6 +203,19 @@ function syncAxes() {
         return Object.values(def.data(p.filters)).map(bound);
       }))
     : 0;
+  // Two side-by-side trends also share an x-axis: both chart the
+  // superset of their trimmed year domains, so a series whose entity
+  // started launching later still lines up against the other's years.
+  // The union is over each chart's own domain (ownLabels), not the
+  // displayed labels — those may still carry padding from a previous
+  // sync, which would keep the shared axis from re-shrinking. Any
+  // other pairing restores each trend's own domain.
+  const trends = charts.filter(p => CHART_DEFS[p.defId].kind === 'Trends');
+  const sharedYears = trends.length === 2
+    ? [...new Set(trends.flatMap(p =>
+        p.inst.ownLabels ?? p.inst.chart.data.labels))].sort()
+    : undefined;
+  trends.forEach(p => p.inst.setXLabels?.(sharedYears));
   charts.forEach(p => {
     // Non-cartesian charts (the donuts) have no scales.y to sync.
     const y = p.inst.chart.options.scales?.y;
@@ -216,8 +229,8 @@ function syncAxes() {
 // their own layout, so a leftover canvas would linger) plus that def's
 // filter controls; table views render a fresh .table-wrap from
 // TABLE_SPECS and get the 'q' search box. Controls are built before
-// chart data() runs so they can seed filter defaults (the entity
-// picker's default pick).
+// chart data() runs so they can normalize filters first (the entity
+// picker prunes stale picks).
 function mountPane(pane) {
   const def = VIEW_DEFS[pane.defId];
   pane.inst?.chart?.destroy();
@@ -458,11 +471,9 @@ const paneTokens = p => {
   return t;
 };
 
-// The ⋯ button accents when the pane has user-set filters. 'e' tokens
-// are excluded — the entity picker always carries its mandatory
-// default selection on trend charts, so it isn't a choice.
+// The ⋯ button accents when the pane has user-set filters.
 function updateFiltersBtn(pane) {
-  const n = paneTokens(pane).filter(t => t[0] !== 'e').length;
+  const n = paneTokens(pane).length;
   pane.filtersBtn.title = n ? `More controls — ${n} set` : 'More controls';
   pane.filtersWrap.classList.toggle('has-sel', n > 0);
 }

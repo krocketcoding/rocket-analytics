@@ -901,6 +901,25 @@ tbody tr[data-set]:focus-visible {
   font-size: 0.85rem;
 }
 
+/* Empty-state hint overlaid on the trend chart when no entity is
+   selected — the pane would otherwise look like a broken empty plot. */
+.chart-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 0.9rem;
+  text-align: center;
+  padding: 1rem;
+  pointer-events: none;
+}
+
+.chart-hint[hidden] {
+  display: none;
+}
+
 /* 'Successes only' checkbox in the slot filters row */
 .success-toggle {
   align-items: center;

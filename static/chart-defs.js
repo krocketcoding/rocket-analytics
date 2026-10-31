@@ -8,18 +8,10 @@
 const yearRows = (key, year) => STATS.yearly[year]?.[key] ?? {};
 
 // Entity pickers list everything chartable in the fetched window — the
-// union of yearly bucket keys, with a per-name launch total so a def's
-// defaultEntity can pick the most-launched entry.
-const topWindowed = key =>
-  Object.entries(windowTotals(key)).sort((a, b) => b[1] - a[1])[0]?.[0];
-
-const windowTotals = key => {
-  const totals = {};
-  for (const bucket of Object.values(STATS.yearly))
-    for (const [name, row] of Object.entries(bucket[key]))
-      totals[name] = (totals[name] || 0) + rowTotal(row);
-  return totals;
-};
+// union of yearly bucket keys, which only exist for names that flew.
+const windowedNames = key =>
+  [...new Set(Object.values(STATS.yearly)
+    .flatMap(bucket => Object.keys(bucket[key])))];
 
 // Label -> country code maps from the stats build, one per grouping;
 // the right map is whichever resolves the chart's own labels.
@@ -81,7 +73,7 @@ const entityOptions = pairs =>
 // Chartable rockets, alphabetized — the rocket trend's entity popover
 // and the site charts' 'rocket' filter share one pick list.
 const rocketEntities = () =>
-  entityOptions(Object.keys(windowTotals('rockets')).map(k => [k, k]));
+  entityOptions(windowedNames('rockets').map(k => [k, k]));
 
 // Site rows are nested {site: {rocket: cats}} so a rocket selection can
 // subset which rockets feed each site; an empty selection keeps every
@@ -130,21 +122,22 @@ const familyRows = (rows, byVariant) => Object.fromEntries(
   }));
 
 // Every charted grouping declared once: `key` is its yearly bucket,
-// `label`/`column` its UI names, `names` the optional tooltip map,
-// `countryMap` the label->code map a country filter offers, `entities`
-// the [value, label] pairs feeding the 'entity' popover (trends) or
+// `label`/`column` its UI names, `plural` the trend entity popover's
+// heading, `names` the optional tooltip map, `countryMap` the
+// label->code map a country filter offers, `entities` the
+// [value, label] pairs feeding the 'entity' popover (trends) or
 // 'rocket' filter (site charts), and `rows` the filter-state ->
 // {name: counts} mapping shared by its bar and donut views.
 const GROUPS = {
   // The 'orbital' toggle drops non-orbit-capable rockets; it rides in
   // this group's filters so both its bar and donut views offer it —
   // trendDef builds its own filter list and is unaffected.
-  rocket:       {key: 'rockets', label: 'Rocket', column: 'Rocket', filters: ['country', 'orbital'], countryMap: ROCKET_COUNTRIES,
+  rocket:       {key: 'rockets', label: 'Rocket', plural: 'Rockets', column: 'Rocket', filters: ['country', 'orbital'], countryMap: ROCKET_COUNTRIES,
                  rows: s => applyOrbitFilter(applyCountryFilter(yearRows('rockets', s.year), s.country, ROCKET_COUNTRIES),
                    s.orbitCapable)},
-  manufacturer: {key: 'manufacturers', label: 'Manufacturer', column: 'Manufacturer', names: STATS.manufacturerNames,
+  manufacturer: {key: 'manufacturers', label: 'Manufacturer', plural: 'Manufacturers', column: 'Manufacturer', names: STATS.manufacturerNames,
                  filters: ['country'], countryMap: MFR_COUNTRIES, rows: s => applyCountryFilter(yearRows('manufacturers', s.year), s.country, MFR_COUNTRIES)},
-  country:      {key: 'countries', label: 'Country', column: 'Country', names: STATS.countryNames, filters: [],
+  country:      {key: 'countries', label: 'Country', plural: 'Countries', column: 'Country', names: STATS.countryNames, filters: [],
                  rows: s => yearRows('countries', s.year)},
   // The 'rocket' filter re-aggregates a site's rows by which rockets
   // flew from it.
@@ -162,12 +155,12 @@ const barDef = g => ({label: g.label, kind: 'Bars', filters: ['year', ...g.filte
 const donutDef = g => ({label: g.label, kind: 'Donuts', filters: ['year', ...g.filters, 'success'], countryMap: g.countryMap,
                         entities: g.entities, data: s => donutSlices(g.rows(s), s.successOnly),
                         mount: pane => donutChart(pane, g.names, g.column)});
-const trendDef = g => ({label: g.label, kind: 'Trends', filters: ['entity', 'success', 'cumulative'], unit: 'launches',
+const trendDef = g => ({label: g.label, kind: 'Trends', plural: g.plural, filters: ['entity', 'success', 'cumulative'], unit: 'launches',
                         // {entity: {year: count}} rows bound the shared axis on the largest
                         // single point, not a row total.
                         rowMax: series => Math.max(0, ...Object.values(series)),
-                        entities: () => entityOptions(Object.keys(windowTotals(g.key)).map(k => [k, g.names?.[k] || k])),
-                        defaultEntity: topWindowed(g.key), data: trendData(g.key),
+                        entities: () => entityOptions(windowedNames(g.key).map(k => [k, g.names?.[k] || k])),
+                        data: trendData(g.key),
                         mount: pane => lineChart(pane.querySelector('canvas'), g.names)});
 
 // Bars def for a grouping that can swap its stack between launch
@@ -202,8 +195,7 @@ const variantBarDef = (label, nested, {filters = [], countryMap, names, entities
 // map the country filter lists, and `rowMax` overrides rowTotal when a
 // def's data rows need a different syncAxes bound. Defs can also
 // provide `entities` — [value, label] pairs feeding the 'entity'
-// popover (trends) or the 'rocket' filter (site charts) — and
-// `defaultEntity`, the trend picker's most-launched fallback.
+// popover (trends) or the 'rocket' filter (site charts).
 const CHART_DEFS = {
   'by-rocket': barDef(GROUPS.rocket),
   'by-rocket-family': variantBarDef('Rocket family',

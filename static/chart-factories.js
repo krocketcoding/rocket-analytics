@@ -255,6 +255,26 @@ function donutChart(pane, fullNames, group) {
 // minus its neutral 'Other' tail.
 const LINE_COLORS = DONUT_COLORS.slice(0, -2);
 
+// A trend's x labels: the union of every series' year keys, sorted —
+// entity picks with no launches in a year still get a point at 0.
+// Years before the first and after the last nonzero point are trimmed
+// off, since a rocket that first flew in 2010 (or retired in 2020)
+// shouldn't stretch a flat line to the window's edges. One zero year
+// is kept at each end so the line visibly rests on the baseline
+// rather than starting/ending mid-air. All-zero data — an entity pick
+// with no launches in the window — isn't trimmed at all.
+const trendDomain = entries => {
+  const years = [...new Set(entries.flatMap(([, s]) => Object.keys(s)))]
+    .sort();
+  const zero = y => entries.every(([, s]) => !s[y]);
+  let first = 0, last = years.length - 1;
+  while (first < years.length && zero(years[first])) first++;
+  while (last >= 0 && zero(years[last])) last--;
+  if (first > last) return years;
+  return years.slice(Math.max(0, first - 1),
+                     Math.min(years.length, last + 2));
+};
+
 // Line chart over {entity: {x: count}} series — currently launches per
 // year for the entities picked in the slot's entity filter. A single
 // series gets an area fill and no legend; multiple series split into
@@ -273,11 +293,27 @@ function lineChart(canvas, fullNames) {
       plugins: {legend: {display: false, position: 'bottom'}},
     },
   });
-  return singleView(chart, entries => {
-    // X labels are the union of every series' keys, sorted — entity
-    // picks with no launches in a year still get a point at 0.
-    const years = [...new Set(entries.flatMap(([, s]) => Object.keys(s)))]
-      .sort();
+  // Empty-state hint overlaid on the pane — with no entity selected the
+  // chart would otherwise look like a broken empty plot. The overlay is
+  // shown/hidden in fill() based on the dataset.
+  const hint = document.createElement('div');
+  hint.className = 'chart-hint';
+  hint.textContent = 'Use the filter above to choose what to display';
+  hint.hidden = true;
+  canvas.parentElement.appendChild(hint);
+  // The last dataset is kept so setXLabels can re-fill the series over
+  // a shared year domain (two side-by-side trends sync to the superset
+  // of their trimmed domains) without re-running the def's data().
+  // a shared year domain (two side-by-side trends sync to the superset
+  // of their trimmed domains) without re-running the def's data().
+  // `own` is the chart's own trimmed domain — syncAxes reads it rather
+  // than the displayed labels, which may carry stale shared padding
+  // from a previous sync.
+  let rows = {}, own = [];
+  const fill = domain => {
+    const entries = Object.entries(rows);
+    own = trendDomain(entries);
+    const years = domain ?? own;
     chart.data.labels = years;
     const multi = entries.length > 1;
     chart.data.datasets = entries.map(([key, series], i) => ({
@@ -291,5 +327,15 @@ function lineChart(canvas, fullNames) {
       tension: 0.25,
     }));
     chart.options.plugins.legend.display = multi;
-  });
+    hint.hidden = entries.length > 0;
+  };
+  // Same one-page contract as singleView, plus setXLabels — the domain
+  // override syncAxes applies. An undefined domain restores the
+  // chart's own trimmed labels; the caller calls chart.update().
+  return {chart,
+    setData: d => { rows = d; fill(); chart.update(); },
+    setXLabels: domain => fill(domain),
+    get ownLabels() { return own; },
+    get page() { return 0; },
+    pageCount: () => 1, setPage() {}, setPageSize() {}};
 }
