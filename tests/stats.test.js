@@ -104,6 +104,19 @@ test('manufacturer map covers chart rows', t => {
       `${name} missing from rocketManufacturers`);
 });
 
+test('orbital rows are orbit-capable', t => {
+  needSite(t);
+  // The rocket charts' 'Orbital only' filter must never hide a rocket
+  // that visibly flew to orbit — every name with an orbital segment in
+  // any year's rows has to be in the set.
+  const {STATS} = loaded;
+  for (const bucket of Object.values(STATS.yearly))
+    for (const [name, row] of Object.entries(bucket.rockets))
+      if (row.orbital > 0)
+        assert.ok(STATS.orbitCapable.has(name),
+          `${name} has orbital launches but isn't orbitCapable`);
+});
+
 test('country filter keys can chart', t => {
   needSite(t);
   // Guards the '???' regression: every filterable rocket or

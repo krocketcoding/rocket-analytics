@@ -74,6 +74,12 @@ function computeStats(data) {
   const rocketManufacturers = {};
   // Launch-site short name -> full location name, for tooltips.
   const siteNames = {};
+  // Per-name orbital launch totals across every fetched year — the
+  // orbit-capable test below treats a real orbital launch as proof of
+  // capability even when the spec sheet's leo_capacity is missing. Any
+  // non-'Sub' orbit counts, whatever the outcome: a failed orbital
+  // attempt still marks an orbital-class vehicle.
+  const orbitalTotals = {};
   // Tally fetched launches per calendar year. Each year gets a
   // name -> category dict per chart grouping: rockets, manufacturers,
   // countries, launch sites, and rocket families. Sites and families
@@ -94,6 +100,8 @@ function computeStats(data) {
     const name = rocket?.name;
     if (name) {
       bump(rocketCounts, name);
+      if (launch.orbit !== 'Sub')
+        orbitalTotals[name] = (orbitalTotals[name] || 0) + 1;
       // Configs with no family group under their own name; the
       // segment key is the full config name because the API's bare
       // variant token merges distinct rockets ('A' spans several
@@ -174,6 +182,18 @@ function computeStats(data) {
     }
   }
 
+  // Rockets able to reach orbit: the spec sheet lists a positive LEO
+  // capacity, or the launch log holds an orbital launch (non-'Sub'
+  // orbit, counted above). A missing or zero leo_capacity plus a
+  // purely suborbital record — sounding rockets, New Shepard — fails
+  // both tests, so the rocket charts' 'Orbit-capable only' filter
+  // drops it.
+  // Counts cover the truncated oldest year too: capability doesn't
+  // depend on which years chart.
+  const orbitCapable = new Set(Object.values(data.rockets)
+    .filter(r => r.name && (r.leo_capacity > 0 || orbitalTotals[r.name] > 0))
+    .map(r => r.name));
+
   return {
     yearly,
     manufacturerNames,
@@ -183,6 +203,7 @@ function computeStats(data) {
     manufacturerCountries,
     rocketManufacturers,
     siteNames,
+    orbitCapable,
   };
 }
 

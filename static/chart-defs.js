@@ -36,6 +36,14 @@ const applyCountryFilter = (data, sel, map = ROCKET_COUNTRIES) => {
     .filter(([name]) => sel.codes.has(map[name]) !== sel.negate));
 };
 
+// Restrict {name: counts} rows to rockets that can reach orbit —
+// STATS.orbitCapable decides (a positive LEO capacity or an orbital
+// launch on record). Capability is a rocket property, so the check
+// ignores the year scope.
+const applyOrbitFilter = (rows, on) => !on ? rows
+  : Object.fromEntries(Object.entries(rows)
+      .filter(([name]) => STATS.orbitCapable.has(name)));
+
 // Donut defs share the bar charts' categorized rows but need flat
 // {label: count} slices: total each row, dropping 'failed' when the
 // Successes-only filter is on.
@@ -128,8 +136,12 @@ const familyRows = (rows, byVariant) => Object.fromEntries(
 // 'rocket' filter (site charts), and `rows` the filter-state ->
 // {name: counts} mapping shared by its bar and donut views.
 const GROUPS = {
-  rocket:       {key: 'rockets', label: 'Rocket', column: 'Rocket', filters: ['country'], countryMap: ROCKET_COUNTRIES,
-                 rows: s => applyCountryFilter(yearRows('rockets', s.year), s.country, ROCKET_COUNTRIES)},
+  // The 'orbital' toggle drops non-orbit-capable rockets; it rides in
+  // this group's filters so both its bar and donut views offer it —
+  // trendDef builds its own filter list and is unaffected.
+  rocket:       {key: 'rockets', label: 'Rocket', column: 'Rocket', filters: ['country', 'orbital'], countryMap: ROCKET_COUNTRIES,
+                 rows: s => applyOrbitFilter(applyCountryFilter(yearRows('rockets', s.year), s.country, ROCKET_COUNTRIES),
+                   s.orbitCapable)},
   manufacturer: {key: 'manufacturers', label: 'Manufacturer', column: 'Manufacturer', names: STATS.manufacturerNames,
                  filters: ['country'], countryMap: MFR_COUNTRIES, rows: s => applyCountryFilter(yearRows('manufacturers', s.year), s.country, MFR_COUNTRIES)},
   country:      {key: 'countries', label: 'Country', column: 'Country', names: STATS.countryNames, filters: [],
@@ -182,7 +194,7 @@ const variantBarDef = (label, nested, {filters = [], countryMap, names, entities
 // under an optgroup heading. Each def lists the filters it supports
 // (each name renders a control in the pane header), maps a filter-state
 // object {year, country, successOnly, cumulative, variantStack,
-// entities, rockets} to its dataset ('pageSize' lives there too but
+// entities, rockets, orbitCapable} to its dataset ('pageSize' lives there too but
 // configures the paged view, not the data), and mounts a chart object
 // inside
 // a .chart-pane — the pager shows only when the instance's pageCount()

@@ -417,8 +417,8 @@ function exportCsv(pane) {
 // percent-encoded names, which keeps ; | @ ^ and , safe as separators.
 // Token keys — y: year scope (charts and the past-launches table);
 // c: country codes (! = exclude); e: entity picks; r: rocket picks;
-// so/cm/vs: successes-only/cumulative/variant toggles; ps: bar-chart
-// rows per page; q: table search;
+// so/cm/vs/oc: successes-only/cumulative/variant/orbit-capable toggles;
+// ps: bar-chart rows per page; q: table search;
 // t: rockets sort as <key>.<dir>. The same string is kept in
 // localStorage so the layout survives between visits; the hash wins
 // on load.
@@ -440,6 +440,7 @@ const paneTokens = p => {
     if (f.successOnly) t.push('so');
     if (f.cumulative) t.push('cm');
     if (f.variantStack) t.push('vs');
+    if (f.orbitCapable) t.push('oc');
     if (f.entities?.size) t.push('e' + encList(f.entities));
     if (f.rockets?.size) t.push('r' + encList(f.rockets));
     if (f.pageSize && f.pageSize !== PAGE_SIZE) t.push('ps' + f.pageSize);
@@ -494,6 +495,7 @@ function parseState(str) {
       if (t === 'so') f.successOnly = true;
       else if (t === 'cm') f.cumulative = true;
       else if (t === 'vs') f.variantStack = true;
+      else if (t === 'oc') f.orbitCapable = true;
       else if (/^y\d{4}$/.test(t)) f.year = t.slice(1);
       else if (/^c/.test(t)) {
         const neg = t[1] === '!';
