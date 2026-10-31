@@ -34,7 +34,9 @@ def get_json(endpoint, params):
 
 def fetch_launches(endpoint, pages):
     """Fetch up to `pages` pages of launches from an endpoint."""
-    params = {"limit": PAGE_SIZE, "mode": "detailed"}
+    # Exclude suborbital launches so only orbital missions and rockets capable of
+    # reaching orbit are included in the dataset.
+    params = {"limit": PAGE_SIZE, "mode": "detailed", "include_suborbital": "false"}
     if endpoint == "upcoming":
         # Soonest first, and skip anything that has already launched.
         params.update(ordering="net", hide_recent_previous="true")

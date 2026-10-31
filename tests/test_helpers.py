@@ -12,8 +12,8 @@ from unittest import mock
 
 import requests
 
-from pipeline.api import get_json
-from pipeline.config import MAX_ATTEMPTS, RETRY_DELAY
+from pipeline.api import fetch_launches, get_json
+from pipeline.config import MAX_ATTEMPTS, PAGE_SIZE, RETRY_DELAY
 from pipeline.dataset import drop_empty
 from pipeline.details import link_details, pick, pull
 from pipeline.launch_cache import load_cache, save_cache
@@ -166,3 +166,15 @@ class GetJsonTest(unittest.TestCase):
             get_json("previous", {})
         self.assertEqual(get.call_count, MAX_ATTEMPTS)
         self.assertEqual(sleep.call_count, MAX_ATTEMPTS - 1)
+
+
+class FetchLaunchesTest(unittest.TestCase):
+    @mock.patch("pipeline.api.get_json")
+    def test_fetch_launches_excludes_suborbital(self, mock_get_json):
+        mock_get_json.return_value = {"results": [{"id": 1}], "next": None}
+        fetch_launches("previous", 1)
+        mock_get_json.assert_called_once_with(
+            "previous",
+            {"limit": PAGE_SIZE, "mode": "detailed", "include_suborbital": "false",
+             "ordering": "-net", "offset": 0},
+        )
