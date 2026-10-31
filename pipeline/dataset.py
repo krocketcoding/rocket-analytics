@@ -108,11 +108,22 @@ def build_dataset(upcoming, previous, data_updated):
             "mission_links": link_details(mission.get("info_urls"), mission.get("vid_urls")),
         }
 
+    # Exclude suborbital launches by rockets that have no LEO capability (0 kg LEO
+    # capacity). Suborbital flights by orbital-capable rockets (e.g. Starship test
+    # flights) are kept, but rockets that can only fly suborbitally are excluded.
+    def keep_launch(launch):
+        orbit = pick((launch.get("mission") or {}).get("orbit"), "abbrev")
+        leo_capacity = (pick(launch.get("rocket"), "configuration") or {}).get("leo_capacity")
+        return not (orbit == "Sub" and leo_capacity == 0)
+
+    upcoming_filtered = [launch for launch in upcoming if keep_launch(launch)]
+    previous_filtered = [launch for launch in previous if keep_launch(launch)]
+
     # Build records before the entity tables — launch_record is what
     # collects them. Upcoming first, so collection order (and thus image
     # indices and table order) stays deterministic.
-    upcoming_records = [launch_record(launch) for launch in upcoming]
-    previous_records = [launch_record(launch) for launch in previous]
+    upcoming_records = [launch_record(launch) for launch in upcoming_filtered]
+    previous_records = [launch_record(launch) for launch in previous_filtered]
 
     def merged_agency(sources):
         """One agency row from several source sightings, first non-empty value per field."""

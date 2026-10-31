@@ -12,9 +12,9 @@ from unittest import mock
 
 import requests
 
-from pipeline.api import fetch_launches, get_json
-from pipeline.config import MAX_ATTEMPTS, PAGE_SIZE, RETRY_DELAY
-from pipeline.dataset import drop_empty
+from pipeline.api import get_json
+from pipeline.config import MAX_ATTEMPTS, RETRY_DELAY
+from pipeline.dataset import build_dataset, drop_empty
 from pipeline.details import link_details, pick, pull
 from pipeline.launch_cache import load_cache, save_cache
 
@@ -168,13 +168,36 @@ class GetJsonTest(unittest.TestCase):
         self.assertEqual(sleep.call_count, MAX_ATTEMPTS - 1)
 
 
-class FetchLaunchesTest(unittest.TestCase):
-    @mock.patch("pipeline.api.get_json")
-    def test_fetch_launches_excludes_suborbital(self, mock_get_json):
-        mock_get_json.return_value = {"results": [{"id": 1}], "next": None}
-        fetch_launches("previous", 1)
-        mock_get_json.assert_called_once_with(
-            "previous",
-            {"limit": PAGE_SIZE, "mode": "detailed", "include_suborbital": "false",
-             "ordering": "-net", "offset": 0},
-        )
+class BuildDatasetSuborbitalFilterTest(unittest.TestCase):
+    def test_exclude_suborbital_without_leo_capacity(self):
+        # 1. Suborbital launch with rocket leo_capacity == 0 (e.g. New Shepard) -> should be excluded
+        sub_no_leo = {
+            "id": "l1", "name": "NS-1",
+            "mission": {"name": "M1", "orbit": {"abbrev": "Sub"}},
+            "rocket": {"configuration": {"id": 101, "name": "New Shepard", "leo_capacity": 0}},
+        }
+        # 2. Suborbital launch with rocket leo_capacity > 0 (e.g. Starship test flight) -> should be kept
+        sub_with_leo = {
+            "id": "l2", "name": "Starship IFT",
+            "mission": {"name": "M2", "orbit": {"abbrev": "Sub"}},
+            "rocket": {"configuration": {"id": 102, "name": "Starship", "leo_capacity": 100000}},
+        }
+        # 3. Orbital launch with rocket leo_capacity == 0 (e.g. GSLV / Long March GTO spec) -> should be kept
+        orbital_zero_leo = {
+            "id": "l3", "name": "GSLV Flight",
+            "mission": {"name": "M3", "orbit": {"abbrev": "GTO"}},
+            "rocket": {"configuration": {"id": 103, "name": "GSLV", "leo_capacity": 0}},
+        }
+
+        dataset = build_dataset([sub_no_leo], [sub_with_leo, orbital_zero_leo], "2026-01-01T00:00:00Z")
+
+        # Upcoming: the suborbital launch with 0 LEO was filtered out (empty list dropped by drop_empty)
+        self.assertNotIn("upcoming", dataset)
+        # Previous: sub_with_leo and orbital_zero_leo are retained
+        previous_names = [l["name"] for l in dataset.get("previous", [])]
+        self.assertIn("Starship IFT", previous_names)
+        self.assertIn("GSLV Flight", previous_names)
+        # Rockets: 101 (New Shepard) should not be registered, while 102 and 103 should
+        self.assertNotIn(101, dataset.get("rockets", {}))
+        self.assertIn(102, dataset.get("rockets", {}))
+        self.assertIn(103, dataset.get("rockets", {}))
