@@ -398,8 +398,8 @@ main {
   white-space: nowrap;
 }
 
-/* Per-view controls (year seg, country picker, table search…) sit in
-   a row inside the pane head and wrap under each other on narrow
+/* Per-view controls (year select, country picker, table search…) sit
+   in a row inside the pane head and wrap under each other on narrow
    panes. */
 .pane-controls {
   align-items: center;

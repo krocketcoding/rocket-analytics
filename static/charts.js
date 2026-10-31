@@ -7,8 +7,10 @@
 // ($, esc, STATS from stats.js) plus the factories and defs from the other chart
 // files; load order is JS_FILES in pipeline/config.py.
 // Segmented scope control over a `scopes` value list — a button per
-// year. Reports the choice via onChange; hides itself when there's only
-// one scope to pick.
+// option. Only for two-or-three-option picks (the variant stack
+// toggle); the year lists run to dozens of entries and use
+// makeScopeSelect instead. Reports the choice via onChange; hides
+// itself when there's only one scope to pick.
 function makeScopeSeg(scope, onChange, scopes) {
   const el = document.createElement('div');
   el.className = 'seg';
@@ -29,9 +31,31 @@ function makeScopeSeg(scope, onChange, scopes) {
   return el;
 }
 
+// Drop-down scope control — a <select> with one option per scope, used
+// by both year pickers (chart scope and the past-launches table). A
+// button-per-year seg fit when the fetch window spanned a decade, but
+// at 40 fetched pages the list runs ~40 years — far wider than a pane
+// head. Same contract as makeScopeSeg: onChange gets the picked value
+// and a single-option control hides itself.
+function makeScopeSelect(scope, onChange, scopes) {
+  const sel = document.createElement('select');
+  sel.className = 'chart-pick';
+  sel.setAttribute('aria-label', 'Year');
+  scopes.forEach(v => {
+    const o = document.createElement('option');
+    o.value = v;
+    o.textContent = v;
+    sel.append(o);
+  });
+  sel.value = scope;
+  sel.addEventListener('change', () => onChange(sel.value));
+  sel.hidden = scopes.length <= 1;
+  return sel;
+}
+
 // Scopes every chart offers: the fetched years, newest first — JS
 // orders the integer-like year keys of STATS.yearly ascending, so a
-// reverse puts the newest year at the front where the seg leads.
+// reverse puts the newest year at the front of the drop-down.
 const ALL_SCOPES = Object.keys(STATS.yearly).reverse();
 // The default and fallback scope is the newest year.
 const DEFAULT_SCOPE = ALL_SCOPES[0];
@@ -260,7 +284,7 @@ const FILTER_BUILDERS = {
     // hash) — resets to the newest year.
     if (!ALL_SCOPES.includes(slot.filters.year))
       slot.filters.year = DEFAULT_SCOPE;
-    return makeScopeSeg(slot.filters.year, year => {
+    return makeScopeSelect(slot.filters.year, year => {
       slot.filters.year = year;
       reload();
     }, ALL_SCOPES);

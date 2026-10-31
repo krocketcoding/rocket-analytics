@@ -62,7 +62,7 @@ const netYears = list =>
   [...new Set(list.map(netYear).filter(Boolean))].sort();
 const LAUNCH_SCOPES = {past: netYears(DATA.previous).reverse()};
 
-// The 'launchYear' filter: the same .seg control as the chart year
+// The 'launchYear' filter: the same drop-down as the chart year
 // picker, but scoped to the table's own launches. A stale scope — a
 // year the table doesn't contain — resets to the newest. Changing it
 // rebuilds the rows like a table sort does, so the search filter
@@ -74,7 +74,7 @@ FILTER_BUILDERS.launchYear = (pane, onChange) => {
     pane.filters.year = year;
     refreshTable(pane);
   }
-  return makeScopeSeg(year, v => {
+  return makeScopeSelect(year, v => {
     pane.filters.year = v;
     refreshTable(pane);
     onChange();
