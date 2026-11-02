@@ -68,7 +68,8 @@ def iter_launch_pages(endpoint, params):
     offset = 0
     while True:
         data = get_json(endpoint, {**params, "offset": offset})
-        print(f"Got page with offset {offset}")
+        print(f"Fetched {len(data['results'])} {endpoint} launches "
+              f"(offset {offset} of {data.get('count', '?')})")
         yield data["results"]
         if not data.get("next"):
             break

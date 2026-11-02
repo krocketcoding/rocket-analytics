@@ -96,6 +96,14 @@ def cmd_update_archive(_args):
         return {"launch_count": len(store), "api_count": api_count,
                 "max_last_updated": max_last_updated(store.values())}
 
+    # save_archive persists after every page, so by the final call only
+    # meta.json is still dirty — count distinct paths across the whole
+    # run or the summary always reports ~1 file.
+    written = set()
+
+    def persist():
+        written.update(save_archive(entities, store, meta))
+
     if not meta.get("complete"):
         # Crawl newest->oldest; resume_net tracks the frontier so a
         # restart continues instead of repeating finished pages.
@@ -104,8 +112,7 @@ def cmd_update_archive(_args):
         for page in paced_pages(iter_previous_before(resume_net)):
             merge_launches(store, entities, page)
             meta.update(complete=False, resume_net=oldest_net(store), **stats())
-            save_archive(entities, store, meta)
-            print(f"{len(store)} launches archived so far")
+            persist()
         meta.update(complete=True)
         meta.pop("resume_net", None)
         print(f"Crawl complete: {len(store)} launches")
@@ -117,7 +124,7 @@ def cmd_update_archive(_args):
         for page in paced_pages(iter_previous_since(since)):
             merge_launches(store, entities, page)
             meta.update(**stats())
-            save_archive(entities, store, meta)
+            persist()
             print(f"{len(store)} launches; watermark {meta['max_last_updated']}")
 
     # Deletion sweep: LL2 never reports removals, so when the API's
@@ -148,7 +155,7 @@ def cmd_update_archive(_args):
         clear_sweep()
 
     meta.update(**stats(), generated_at=datetime.now(timezone.utc).isoformat(), complete=True)
-    written = save_archive(entities, store, meta)
+    persist()
     print(f"Archive updated ({len(store)} launches, {len(written)} files written)")
 
 

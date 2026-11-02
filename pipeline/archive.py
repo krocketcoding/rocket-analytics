@@ -227,7 +227,9 @@ def load_archive(archive_dir=ARCHIVE_DIR):
         path = archive_dir / "entities" / f"{table}.jsonl"
         if not path.exists():
             continue
-        for line in path.read_text(encoding="utf-8").splitlines():
+        # Split on \n only: ensure_ascii=False leaves U+2028/U+2029 raw in
+        # strings, and splitlines() would cut records at those.
+        for line in path.read_text(encoding="utf-8").split("\n"):
             if line.strip():
                 obj = json.loads(line)
                 entities[table][obj["id"]] = obj
@@ -235,7 +237,7 @@ def load_archive(archive_dir=ARCHIVE_DIR):
     launches_dir = archive_dir / "launches"
     if launches_dir.exists():
         for path in sorted(launches_dir.glob("*.jsonl")):
-            for line in path.read_text(encoding="utf-8").splitlines():
+            for line in path.read_text(encoding="utf-8").split("\n"):
                 if line.strip():
                     rec = json.loads(line)
                     store[rec["id"]] = rec
@@ -249,7 +251,9 @@ def save_archive(entities, store, meta, archive_dir=ARCHIVE_DIR):
     def write_if_changed(path, text):
         if not (path.exists() and path.read_text(encoding="utf-8") == text):
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(text, encoding="utf-8")
+            # newline="" stops text mode translating \n to os.linesep —
+            # the shards are pinned to eol=lf in .gitattributes.
+            path.write_text(text, encoding="utf-8", newline="")
             written.append(path)
 
     for table in ENTITY_TABLES:
@@ -275,7 +279,10 @@ def save_archive(entities, store, meta, archive_dir=ARCHIVE_DIR):
                 stale.unlink()
                 written.append(stale)
 
-    write_if_changed(archive_dir / META_FILE, _line(meta) + "\n")
+    # meta.json is human-inspected state (not a shard), so it gets the
+    # readable multi-line format rather than the compact JSONL style.
+    meta_text = json.dumps(meta, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+    write_if_changed(archive_dir / META_FILE, meta_text)
     return written
 
 
@@ -289,7 +296,7 @@ def load_sweep(archive_dir=ARCHIVE_DIR):
 
 def save_sweep(sweep, archive_dir=ARCHIVE_DIR):
     archive_dir.mkdir(parents=True, exist_ok=True)
-    (archive_dir / SWEEP_FILE).write_text(_line(sweep) + "\n", encoding="utf-8")
+    (archive_dir / SWEEP_FILE).write_text(_line(sweep) + "\n", encoding="utf-8", newline="")
 
 
 def clear_sweep(archive_dir=ARCHIVE_DIR):

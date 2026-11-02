@@ -144,6 +144,16 @@ class SaveLoadTest(unittest.TestCase):
         self.assertIn("2019.jsonl", names)
         self.assertNotIn("2020.jsonl", names)
 
+    def test_unicode_line_separator_in_record(self):
+        # ensure_ascii=False leaves U+2028 raw inside strings; a naive
+        # splitlines() on load would cut the record mid-string.
+        raw = raw_launch("a")
+        raw["mission"]["description"] = "line one\u2028line two"
+        entities, store = archive_of([raw])
+        save_archive(entities, store, new_meta(), self.dir)
+        _, store2, _ = load_archive(self.dir)
+        self.assertEqual(store2["a"]["mission"]["description"], "line one\u2028line two")
+
     def test_empty_year_shard_removed(self):
         entities, store = archive_of([raw_launch("a", net="2020-01-01T00:00:00Z")])
         save_archive(entities, store, new_meta(), self.dir)
