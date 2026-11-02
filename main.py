@@ -7,6 +7,8 @@ Subcommands:
                    With no archive it performs the paced full-history crawl;
                    delete launch-archive/ first to force one (reconciles
                    upstream deletions alongside the count-probe sweep).
+  verify           check entity counters in launch-archive/ against the
+                   stored launch records
 """
 
 import argparse
@@ -17,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 from pipeline.api import fetch_launches, iter_previous_before, iter_previous_since, paced_pages, probe_count
 from pipeline.archive import (clear_sweep, load_archive, load_sweep, max_last_updated,
                               merge_launches, merged_previous, new_entities, new_meta, oldest_net, prune,
-                              save_archive, save_sweep)
+                              save_archive, save_sweep, verify_archive)
 from pipeline.build import build_site
 from pipeline.config import UPCOMING_LAUNCH_PAGES
 from pipeline.launch_cache import load_cache, merge_delta, save_cache
@@ -40,6 +42,16 @@ def _cache_fresh(cached, max_age):
 
 def _watermark(*record_lists):
     return max_last_updated(itertools.chain.from_iterable(record_lists))
+
+
+def _report_mismatches(problems):
+    if not problems:
+        print("Entity counters reconcile with the launch records.")
+        return
+    print(f"{len(problems)} counter mismatches vs LL2 totals "
+          "(agency counts are known to differ; rocket/pad diffs suggest a bug):")
+    for table, eid, name, field, claimed, actual in problems:
+        print(f"  {table}/{eid} {name}: {field} claims {claimed}, archive has {actual}")
 
 
 def cmd_build(args):
@@ -157,6 +169,20 @@ def cmd_update_archive(_args):
     meta.update(**stats(), generated_at=datetime.now(timezone.utc).isoformat(), complete=True)
     persist()
     print(f"Archive updated ({len(store)} launches, {len(written)} files written)")
+    if meta.get("complete"):
+        # A truncated archive can't reconcile — only worth checking whole.
+        _report_mismatches(verify_archive(entities, store))
+
+
+def cmd_verify(_args):
+    """Check entity counters in launch-archive/ against the stored records."""
+    loaded = load_archive()
+    if not loaded:
+        sys.exit("No launch archive — run `python main.py update-archive` first.")
+    entities, store, meta = loaded
+    if not meta.get("complete"):
+        print("Archive is incomplete — totals won't reconcile until the crawl finishes.")
+    _report_mismatches(verify_archive(entities, store))
 
 
 def main():
@@ -171,13 +197,16 @@ def main():
                    help=f"pages of upcoming launches to fetch (default: {UPCOMING_LAUNCH_PAGES})")
     sub.add_parser("update-archive",
                    help="fetch LL2 changes into launch-archive/ (full crawl when absent)")
+    sub.add_parser("verify", help="check entity counters against the stored launch records")
     # Bare `python main.py` (or flags alone) means `build`.
     argv = sys.argv[1:]
-    if not argv or argv[0] not in ("build", "update-archive", "-h", "--help"):
+    if not argv or argv[0] not in ("build", "update-archive", "verify", "-h", "--help"):
         argv = ["build"] + argv
     args = parser.parse_args(argv)
     if args.command == "update-archive":
         cmd_update_archive(args)
+    elif args.command == "verify":
+        cmd_verify(args)
     else:
         if args.upcoming_pages < 1:
             parser.error("--upcoming-pages must be at least 1")

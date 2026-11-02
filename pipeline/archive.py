@@ -20,6 +20,7 @@ format exists.
 """
 
 import json
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
 from .config import ARCHIVE_DIR
@@ -205,6 +206,66 @@ def oldest_net(store):
     """Oldest net in the slim store — the crawl resume cursor."""
     nets = [rec.get("net") for rec in store.values() if rec.get("net")]
     return min(nets) if nets else None
+
+
+def _outcome(rec):
+    """Bucket a launch's status abbrev into LL2's counter categories."""
+    ab = (rec.get("status") or {}).get("abbrev") or ""
+    if ab == "Success":
+        return "successful"
+    if "Fail" in ab:
+        # Partial Failure counts toward failed_launches, not successful.
+        return "failed"
+    return "other"
+
+
+# Entity counters that can be recomputed from launch records. Pads only
+# carry total_launch_count; programs carry none. Skipped on purpose:
+# pending_launches (no upcoming in the archive), consecutive_*/landings
+# (streak and landing data), and orbital_launch_attempt_count (orbital
+# only — suborbital pads legitimately claim fewer).
+COUNTER_FIELDS = (
+    ("successful_launches", "successful"),
+    ("failed_launches", "failed"),
+    ("total_launch_count", "total"),
+)
+
+
+def verify_archive(entities, store):
+    """Reconcile entity launch counters against the stored records.
+
+    Returns [(table, id, name, field, claimed, actual), ...]. LL2 keeps
+    deleted or reassigned launches in its totals, so agency mismatches
+    are expected upstream drift; rockets and pads match exactly in
+    practice, which makes them a canary for store corruption."""
+    tally = {t: defaultdict(Counter) for t in ENTITY_TABLES}
+    for rec in store.values():
+        cat = _outcome(rec)
+        # Agencies count provider-attributed launches only — including
+        # mission.agencies would overcount against LL2's totals.
+        provider = (rec.get("launch_service_provider") or {}).get("id")
+        if provider is not None:
+            tally["agencies"][provider][cat] += 1
+        config = ((rec.get("rocket") or {}).get("configuration") or {}).get("id")
+        if config is not None:
+            tally["rockets"][config][cat] += 1
+        pad = (rec.get("pad") or {}).get("id")
+        if pad is not None:
+            tally["pads"][pad][cat] += 1
+
+    problems = []
+    for table in ("agencies", "rockets", "pads"):
+        fields = COUNTER_FIELDS[1:] if table == "pads" else COUNTER_FIELDS
+        for eid, ent in entities[table].items():
+            got = tally[table][eid]
+            actual = {"successful": got["successful"], "failed": got["failed"],
+                      "total": got["successful"] + got["failed"] + got["other"]}
+            for field, cat in fields:
+                claimed = ent.get(field)
+                if claimed is not None and claimed != actual[cat]:
+                    name = ent.get("name") or ent.get("full_name")
+                    problems.append((table, eid, name, field, claimed, actual[cat]))
+    return problems
 
 
 def _line(obj):

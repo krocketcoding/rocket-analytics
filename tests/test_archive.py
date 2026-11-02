@@ -10,7 +10,7 @@ from unittest import mock
 
 from pipeline.api import paced_pages
 from pipeline.archive import (load_archive, merge_launches, merged_previous, new_entities, new_meta,
-                              prune, rehydrate, save_archive, slim)
+                              prune, rehydrate, save_archive, slim, verify_archive)
 from pipeline.dataset import build_dataset
 
 
@@ -186,6 +186,18 @@ class PruneTest(unittest.TestCase):
         self.assertNotIn(999, entities["agencies"])
         self.assertNotIn(999, entities["pads"])
         self.assertIn(1, entities["agencies"])
+
+
+class VerifyTest(unittest.TestCase):
+    def test_counter_reconciliation(self):
+        entities, store = archive_of([raw_launch("a"), raw_launch("b")])
+        entities["rockets"][10].update(successful_launches=2, failed_launches=0, total_launch_count=2)
+        entities["pads"][20]["total_launch_count"] = 2
+        # Deliberately wrong — agencies keep upstream-deleted launches in
+        # their totals, so a mismatch is reported rather than an error.
+        entities["agencies"][1].update(successful_launches=5, failed_launches=0, total_launch_count=2)
+        self.assertEqual(verify_archive(entities, store),
+                         [("agencies", 1, "Agency 1", "successful_launches", 5, 2)])
 
 
 class PacedPagesTest(unittest.TestCase):
