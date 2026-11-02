@@ -91,13 +91,10 @@ function loadApp(data) {
     location: {hash: '', pathname: '/x', search: ''},
     addEventListener() {},
     window: {},
-    // tables.js isn't loaded — stub the two bindings workspace.js calls.
-    renderTable: () => makeEl(),
-    tableCsv: () => '',
   };
   vm.createContext(sandbox);
   const src = ['app.js', 'stats.js', 'chart-factories.js',
-               'chart-defs.js', 'charts.js', 'workspace.js']
+               'chart-defs.js', 'charts.js', 'tables.js', 'workspace.js']
     .map(read).join('\n');
   vm.runInContext(src + `
 this.__x = {
@@ -246,6 +243,16 @@ test('parseState round-trips a full filter token set', () => {
   assert.equal(s.views[1].f.q, 'falcon');
   assert.equal(s.ratio, 0.6);
   assert.equal(s.focus, 1);
+});
+
+test('the column pick serializes and parses back', () => {
+  const x = loadApp(makeData());
+  x.panes[1].filters.cols.add('orbit');
+  x.panes[1].filters.cols.add('provider');
+  assert.equal(x.serialize(), 'by-rocket|upcoming;korbit,provider');
+  const s = x.parseState('by-rocket|upcoming;korbit,provider');
+  assert.deepEqual(norm([...s.views[1].f.cols].sort()),
+                   ['orbit', 'provider']);
 });
 
 test('parseState tolerates malformed input', () => {

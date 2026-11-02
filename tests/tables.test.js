@@ -102,3 +102,35 @@ test('tableCsv follows the pane sort for the rockets table', () => {
   const lines = csv.split('\r\n');
   assert.ok(lines[1].startsWith('"OldOrb"'));
 });
+
+test('optional columns stay out of the table until enabled', () => {
+  const x = loadTables(makeData());
+  assert.doesNotMatch(
+    x.tableCsv(pane('upcoming', {cols: new Set()})), /Orbit|Program/);
+  const head = x.tableCsv(pane('upcoming', {cols: new Set(['orbit'])}))
+    .split('\r\n')[0];
+  assert.match(head, /"Orbit"/);
+  assert.doesNotMatch(head, /"Program"/);
+});
+
+test('hideable columns render by default and drop when toggled', () => {
+  const x = loadTables(makeData());
+  const plain = x.tableCsv(pane('upcoming', {cols: new Set()}))
+    .split('\r\n')[0];
+  assert.match(plain, /"Provider"/);
+  assert.match(plain, /"Pad"/);
+  const head = x.tableCsv(pane('upcoming', {cols: new Set(['provider'])}))
+    .split('\r\n')[0];
+  assert.doesNotMatch(head, /"Provider"/);
+  assert.match(head, /"Pad"/);
+});
+
+test('rocketRows sorts by optional numeric and date keys', () => {
+  const x = loadTables(makeData());
+  const byThrust = x.rocketRows(pane('rockets', {sort: 'thrust', dir: 'desc'}));
+  assert.equal(byThrust[0].rec.name, 'Falcon 9');   // 7607 kN beats 100
+  const byMaiden = x.rocketRows(pane('rockets', {sort: 'maiden_flight', dir: 'asc'}));
+  assert.equal(byMaiden[0].rec.name, 'OldOrb');      // 1961 before 2010
+  // Records missing the key sort last in either direction.
+  assert.equal(byMaiden.at(-1).rec.maiden_flight, undefined);
+});

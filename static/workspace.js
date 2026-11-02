@@ -13,9 +13,9 @@
 // TABLE_SPECS in tables.js, so the same table can be open in both
 // panes (with independent sorts and searches).
 const TABLE_VIEWS = {
-  upcoming: {label: 'Upcoming launches', kind: 'Tables', filters: ['q']},
-  past:     {label: 'Previous launches', kind: 'Tables', filters: ['launchYear', 'q']},
-  rockets:  {label: 'Rockets',           kind: 'Tables', filters: ['q']},
+  upcoming: {label: 'Upcoming launches', kind: 'Tables', filters: ['cols', 'q']},
+  past:     {label: 'Previous launches', kind: 'Tables', filters: ['launchYear', 'cols', 'q']},
+  rockets:  {label: 'Rockets',           kind: 'Tables', filters: ['cols', 'q']},
 };
 const VIEW_DEFS = {...CHART_DEFS, ...TABLE_VIEWS};
 const isChart = id => id in CHART_DEFS;
@@ -81,13 +81,45 @@ FILTER_BUILDERS.launchYear = (pane, onChange) => {
   }, scopes);
 };
 
-// Table filter state: the search text, plus the year scope for tables
-// that offer one — seeded from a carried-over chart year when the
-// table has it, else the newest. Unscoped tables get just {q}.
+// Table filter state: the search text, the optional-column pick, plus
+// the year scope for tables that offer one — seeded from a carried-over
+// chart year when the table has it, else the newest.
 const freshTableFilters = (defId, year) => {
   const scopes = LAUNCH_SCOPES[defId];
-  return {q: '', ...(scopes
+  return {q: '', cols: new Set(), ...(scopes
     ? {year: scopes.includes(year) ? year : scopes[0]} : {})};
+};
+
+// The 'cols' filter: a checkbox popover over the table spec's `opt`
+// and `hide` columns — filters.cols holds keys flipped away from their
+// default, so an `opt` row is checked when its key is present and a
+// `hide` row when it's absent. Toggling rebuilds the table (the CSV
+// export follows the same visible set). Picks that aren't options for
+// this table are pruned, like the entity pickers — a hash could name a
+// column another table doesn't have.
+FILTER_BUILDERS.cols = (pane, onChange) => {
+  const opts = TABLE_SPECS[pane.defId].cols.filter(c => c.opt || c.hide);
+  const sel = pane.filters.cols ??= new Set();
+  // Toggle key -> 'opt'|'hide'; checked means visible, so a `hide` row
+  // reads and writes its membership inverted.
+  const kind = new Map(opts.map(c => [c.opt || c.hide, c.opt ? 'opt' : 'hide']));
+  [...sel].forEach(v => { if (!kind.has(v)) sel.delete(v); });
+  return makeCheckPopover({
+    title: 'Columns',
+    options: opts.map(c => [c.opt || c.hide, c.head]),
+    sel,
+    isOn: v => (kind.get(v) === 'hide' ? !sel.has(v) : sel.has(v)),
+    set: (v, on) => ((kind.get(v) === 'hide' ? !on : on)
+      ? sel.add(v) : sel.delete(v)),
+    summary: () => ({text: sel.size ? `Columns: ±${sel.size}` : 'Columns'}),
+    active: () => sel.size > 0,
+    onChange: () => { refreshTable(pane); onChange(); },
+    reset: () => {
+      if (!sel.size) return false;
+      sel.clear();
+      return true;
+    },
+  });
 };
 
 const workspaceEl = $('workspace');
@@ -438,7 +470,7 @@ function exportCsv(pane) {
 // Token keys — y: year scope (charts and the past-launches table);
 // c: country codes (! = exclude); e: entity picks; r: rocket picks;
 // so/cm/vs/oc: successes-only/cumulative/variant/orbit-capable toggles;
-// ps: bar-chart rows per page; q: table search;
+// ps: bar-chart rows per page; q: table search; k: optional columns;
 // t: rockets sort as <key>.<dir>. The same string is kept in
 // localStorage so the layout survives between visits; the hash wins
 // on load.
@@ -474,6 +506,7 @@ const paneTokens = p => {
     // writes {sort, dir} into it on each header click.
     if (p.defId === 'rockets' && f.sort)
       t.push('t' + f.sort + '.' + (f.dir || 'desc'));
+    if (f.cols?.size) t.push('k' + encList([...f.cols].sort()));
   }
   return t;
 };
@@ -527,6 +560,7 @@ function parseState(str) {
       else if (/^ps\d+$/.test(t) && PAGE_SIZES.includes(+t.slice(2)))
         f.pageSize = +t.slice(2);
       else if (t[0] === 'q') f.q = decodeURIComponent(t.slice(1));
+      else if (t[0] === 'k') f.cols = new Set(decList(t.slice(1)));
       else if (/^t\w+\.(asc|desc)$/.test(t)) {
         const [k, d] = t.slice(1).split('.');
         f.sort = k;

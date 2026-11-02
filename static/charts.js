@@ -135,9 +135,15 @@ function addPopSearch(pop) {
 //   extraRows  rows inserted between the search box and the options —
 //              an array, or a function of emit() for rows that fire
 //              changes themselves (the country picker's negate toggle)
+//   isOn(v)    checkbox state for a row — defaults to sel.has(v);
+//              inverted when "checked" means the key is absent (the
+//              column picker's hideable columns)
+//   set(v, on) apply a checkbox flip — defaults to add/delete on sel
 function makeCheckPopover(opts) {
   const {title, resetLabel = 'Clear', options, sel, summary, active,
-         onChange, reset, extraRows = []} = opts;
+         onChange, reset, extraRows = [],
+         isOn = v => sel.has(v),
+         set = (v, on) => (on ? sel.add(v) : sel.delete(v))} = opts;
   const wrap = document.createElement('div');
   wrap.className = 'pick-filter';
   const btn = document.createElement('button');
@@ -169,9 +175,9 @@ function makeCheckPopover(opts) {
     row.className = 'pick-row';
     const cb = document.createElement('input');
     cb.type = 'checkbox';
-    cb.checked = sel.has(v);
+    cb.checked = isOn(v);
     cb.addEventListener('change', () => {
-      cb.checked ? sel.add(v) : sel.delete(v);
+      set(v, cb.checked);
       emit();
     });
     row.append(cb, name);
@@ -179,12 +185,12 @@ function makeCheckPopover(opts) {
     cbs.push([v, cb]);
   }
   // Reset mutates via the caller's closure; on a real change every
-  // option checkbox re-syncs to sel. Extra-row checkboxes (the negate
-  // toggle) sync inside their own reset closure instead — a blanket
-  // .pick-row query would desync them.
+  // option checkbox re-syncs through isOn. Extra-row checkboxes (the
+  // negate toggle) sync inside their own reset closure instead — a
+  // blanket .pick-row query would desync them.
   clear.addEventListener('click', () => {
     if (!reset()) return;
-    cbs.forEach(([v, cb]) => { cb.checked = sel.has(v); });
+    cbs.forEach(([v, cb]) => { cb.checked = isOn(v); });
     emit();
   });
   btn.addEventListener('click', () => {

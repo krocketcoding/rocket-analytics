@@ -3,14 +3,16 @@
 // rocket sort wiring. A classic script sharing DATA/esc/fmtLocal/num
 // from app.js; load order is JS_FILES in pipeline/config.py.
 //
-// A column spec is {head, headHtml?, sort?, net?, text(rec), html?(rec)}:
-// `text` is the cell's plain value — it feeds the CSV directly and is
-// HTML-escaped for the <td>; `html` overrides the cell markup when the
-// value needs markup (the two-line date, the status badge); `sort`
-// names the record key a header click can order by (rockets only);
-// `headHtml` overrides the header text when it needs markup; `net`
-// marks the date column so it keeps the data-net attribute the
-// stylesheet's nowrap rule hooks.
+// A column spec is {head, headHtml?, sort?, net?, opt?, text(rec),
+// html?(rec)}: `text` is the cell's plain value — it feeds the CSV
+// directly and is HTML-escaped for the <td>; `html` overrides the cell
+// markup when the value needs markup (the two-line date, the status
+// badge); `sort` names the record key a header click can order by
+// (rockets only); `headHtml` overrides the header text when it needs
+// markup; `net` marks the date column so it keeps the data-net
+// attribute the stylesheet's nowrap rule hooks. `opt`/`hide` mark
+// toggleable columns: `opt` starts hidden, `hide` starts shown — and
+// filters.cols holds the keys flipped away from that default.
 
 const launchCols = withStatus => [
   {head: 'Date', net: true,
@@ -24,9 +26,9 @@ const launchCols = withStatus => [
        + esc(t.toLocaleTimeString(undefined, {timeStyle: 'short'}));
    }},
   {head: 'Mission', text: d => d.name || ''},
-  {head: 'Provider',
+  {hide: 'provider', head: 'Provider',
    text: d => DATA.agencies[d.provider_id]?.name ?? '—'},
-  {head: 'Pad',
+  {hide: 'pad', head: 'Pad',
    text: d => DATA.pads[d.pad_id]?.name ?? '—'},
   ...(withStatus ? [{
     head: 'Status',
@@ -37,19 +39,41 @@ const launchCols = withStatus => [
       return `<span class="status status-${esc(cls)}">${esc(s?.name || 'Unknown')}</span>`;
     },
   }] : []),
+  {opt: 'orbit', head: 'Orbit', text: d => d.orbit || '—'},
+  {opt: 'program', head: 'Program',
+   text: d => (d.program_ids || [])
+     .map(id => DATA.programs[id]?.name).filter(Boolean).join(' · ') || '—'},
 ];
 
 const rocketCols = [
   {head: 'Name', text: r => r.name || '—'},
   // The manufacturer is a row in the merged agencies table.
-  {head: 'Provider',
+  {hide: 'provider', head: 'Provider',
    text: r => DATA.agencies[r.manufacturer_id]?.name || '—'},
-  {head: 'LEO capacity', sort: 'leo_capacity',
+  {hide: 'leo', head: 'LEO capacity', sort: 'leo_capacity',
    text: r => r.leo_capacity != null ? num(r.leo_capacity, 'kg') : '—'},
-  {head: 'Successful / attempted', headHtml: 'Successful /<br>attempted',
-   sort: 'launches',
+  {hide: 'launches', head: 'Successful / attempted',
+   headHtml: 'Successful /<br>attempted', sort: 'launches',
    text: r => r.launches != null ? `${r.successful || 0} / ${r.launches}` : '—'},
+  {opt: 'status', head: 'Status',
+   text: r => r.active == null ? '—' : (r.active ? 'Active' : 'Retired')},
+  {opt: 'thrust', head: 'Thrust', sort: 'thrust',
+   text: r => r.thrust != null ? num(r.thrust, 'kN') : '—'},
+  {opt: 'maiden', head: 'Maiden flight', sort: 'maiden_flight',
+   text: r => r.maiden_flight || '—'},
+  {opt: 'streak', head: 'Success streak', headHtml: 'Success<br>streak',
+   sort: 'streak', text: r => r.streak != null ? String(r.streak) : '—'},
 ];
+
+// The columns a pane actually renders. filters.cols holds toggle keys
+// flipped away from their default: an `opt` column shows when its key
+// is present, a `hide` column when it's absent (a missing set means no
+// flips, i.e. the default layout).
+const visCols = (spec, pane) => spec.cols.filter(c => {
+  if (c.opt) return pane.filters.cols?.has(c.opt);
+  if (c.hide) return !pane.filters.cols?.has(c.hide);
+  return true;
+});
 
 // Default rocket order: launch count, then LEO capacity, then name
 // (byName from stats.js — code point, so it's locale-independent).
@@ -71,7 +95,11 @@ function rocketRows(pane) {
     const va = a.rec[key], vb = b.rec[key];
     if (va == null) return vb == null ? 0 : 1;
     if (vb == null) return -1;
-    return mul * (vb - va);
+    // Numeric keys compare by value; string keys (maiden_flight's ISO
+    // date) fall back to locale order.
+    const cmp = typeof va === 'number' && typeof vb === 'number'
+      ? vb - va : String(vb).localeCompare(String(va));
+    return mul * cmp;
   });
 }
 
@@ -134,9 +162,10 @@ function renderTable(pane) {
   const sortKey = pane.filters.sort || 'launches';
   const sortDir = pane.filters.dir || 'desc';
   const rows = spec.rows(pane);
+  const cols = visCols(spec, pane);
   const wrap = document.createElement('div');
   wrap.className = 'table-wrap';
-  wrap.innerHTML = `<table><thead><tr>${spec.cols.map(c => {
+  wrap.innerHTML = `<table><thead><tr>${cols.map(c => {
       const sortable = c.sort ? ` class="sortable" data-sort="${c.sort}"` : '';
       const dir = c.sort && c.sort === sortKey ? ` data-dir="${sortDir}"` : '';
       return `<th${sortable}${dir}>${c.headHtml || esc(c.head)}</th>`;
@@ -144,7 +173,7 @@ function renderTable(pane) {
       const attrs = r.set === 'rockets'
         ? `data-set="rockets" data-id="${esc(String(r.key))}" tabindex="0"`
         : `data-set="${r.set}" data-idx="${r.key}" tabindex="0"`;
-      return `<tr ${attrs}>${spec.cols.map(c =>
+      return `<tr ${attrs}>${cols.map(c =>
         `<td${c.net ? ` data-net="${esc(r.rec.net || '')}"` : ''}>${c.html ? c.html(r.rec) : esc(c.text(r.rec))}</td>`
       ).join('')}</tr>`;
     }).join('')}</tbody></table><p class="table-note">${esc(spec.note(pane, rows.length))}</p>`;
@@ -181,7 +210,8 @@ const csvCell = v => `"${String(v).replaceAll('"', '""')}"`;
 // pane currently displays (the rockets export follows its sort).
 function tableCsv(pane) {
   const spec = TABLE_SPECS[pane.defId];
-  const rows = [spec.cols.map(c => c.head),
-    ...spec.rows(pane).map(r => spec.cols.map(c => c.text(r.rec)))];
+  const cols = visCols(spec, pane);
+  const rows = [cols.map(c => c.head),
+    ...spec.rows(pane).map(r => cols.map(c => c.text(r.rec)))];
   return rows.map(r => r.map(csvCell).join(',')).join('\r\n');
 }
