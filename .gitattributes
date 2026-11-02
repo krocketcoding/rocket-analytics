@@ -1,0 +1,3 @@
+# JSONL shards are diffed line-by-line and written with \n by the build —
+# CRLF conversion would turn every shard into whole-file diff noise.
+*.jsonl text eol=lf

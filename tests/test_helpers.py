@@ -84,29 +84,34 @@ class CacheTest(unittest.TestCase):
         self.assertIsNone(load_cache())
 
     def test_empty_upcoming(self):
-        self._write({"upcoming": [], "previous": [{}],
+        self._write({"upcoming": [], "previous_delta": [{}],
                      "last_updated": "2026-01-01T00:00:00+00:00"})
         self.assertIsNone(load_cache())
 
+    def test_legacy_previous_key_reads_as_delta(self):
+        self._write({"upcoming": [1], "previous": [2],
+                     "last_updated": "2026-01-01T00:00:00+00:00"})
+        self.assertEqual(load_cache(), ([1], [2], "2026-01-01T00:00:00+00:00"))
+
     def test_malformed_timestamp_with_max_age(self):
-        self._write({"upcoming": [{}], "previous": [{}],
+        self._write({"upcoming": [{}], "previous_delta": [{}],
                      "last_updated": "not-a-date"})
         self.assertIsNone(load_cache(timedelta(hours=1)))
 
     def test_fresh_timestamp_within_max_age(self):
-        self._write({"upcoming": [1], "previous": [2],
+        self._write({"upcoming": [1], "previous_delta": [2],
                      "last_updated": "9999-01-01T00:00:00+00:00"})
         self.assertEqual(load_cache(timedelta(hours=1)),
                          ([1], [2], "9999-01-01T00:00:00+00:00"))
 
     def test_old_timestamp_is_stale(self):
-        self._write({"upcoming": [1], "previous": [2],
+        self._write({"upcoming": [1], "previous_delta": [2],
                      "last_updated": "2000-01-01T00:00:00+00:00"})
         self.assertIsNone(load_cache(timedelta(hours=1)))
 
     def test_malformed_timestamp_without_max_age(self):
         # Age only matters when a max_age is given.
-        self._write({"upcoming": [1], "previous": [2],
+        self._write({"upcoming": [1], "previous_delta": [2],
                      "last_updated": "not-a-date"})
         self.assertEqual(load_cache(), ([1], [2], "not-a-date"))
 

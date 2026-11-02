@@ -8,7 +8,6 @@ rendering (tables, modals, charts) all happen in JavaScript off this
 one structure; Jinja is only the page shell around it.
 """
 
-from .config import PAGE_SIZE, PAST_LAUNCH_PAGES
 from .details import AGENCY_FIELDS, LAUNCH_FIELDS, PAD_FIELDS, ROCKET_FIELDS, UPDATE_FIELDS, link_details, pick, pull
 
 
@@ -26,8 +25,11 @@ def drop_empty(value):
     return value
 
 
-def build_dataset(upcoming, previous, data_updated):
-    """Normalize the fetched launches into the dataset the site ships."""
+def build_dataset(upcoming, previous, data_updated, complete=True):
+    """Normalize the fetched launches into the dataset the site ships.
+
+    `complete` is false while the launch archive is still mid-crawl — the
+    front end drops the oldest year when it can't trust it to be full."""
     # Every unique image URL is interned once into `images`; records
     # carry the integer index instead of repeating the URL.
     images = []
@@ -157,9 +159,10 @@ def build_dataset(upcoming, previous, data_updated):
     meta = {}
     if data_updated:
         meta["updated"] = data_updated
-    # Results are fetched newest-first and may be cut off mid-year at the
-    # page cap; the front end drops the oldest year when this is set.
-    meta["truncated"] = len(previous) >= PAST_LAUNCH_PAGES * PAGE_SIZE
+    # A half-crawled archive can end mid-year; the front end drops the
+    # oldest year when this is set. Once the archive is complete the flag
+    # stays off — the oldest year is real.
+    meta["truncated"] = not complete
 
     return drop_empty({
         "meta": meta,

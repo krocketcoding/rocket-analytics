@@ -1,0 +1,40 @@
+name: Update launch archive
+
+on:
+  schedule:
+    - cron: "37 4 * * 0"  # Weekly, Sunday 04:37 UTC (off the congested top-of-hour slot)
+  workflow_dispatch:
+
+# The archive commit goes back to master — the only job allowed to write.
+permissions:
+  contents: write
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.15"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      # Incremental update: probe + changed-since-watermark fetch is only a
+      # few requests. Any in-progress crawl or deletion sweep checkpoints
+      # into launch-archive/ and resumes next run.
+      - name: Run Python update archive command
+        run: python main.py update-archive
+        env:
+          LL2_API_KEY: ${{ secrets.LL2_API_KEY }}
+      - name: Commit archive if changed
+        run: |
+          if [ -z "$(git status --porcelain launch-archive)" ]; then
+            echo "Archive unchanged."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add launch-archive
+          git commit -m "Updated launch archive"
+          git push

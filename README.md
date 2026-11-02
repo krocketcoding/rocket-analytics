@@ -2,157 +2,91 @@
 
 A vibe coded rocket launch analytics dashboard. The Python build pipeline fetches launch data from the
 [Launch Library 2](https://thespacedevs.com/llapi) API and normalizes it into one dataset; everything you see —
-charts, tables, modals — is rendered in JavaScript from that data. Hosted on GitHub Pages and automatically updated
-via GitHub Actions every 6 hours.
+charts, tables, modals — is rendered in JavaScript from that data. Hosted on GitHub Pages, rebuilt every 4 hours.
 
-[See it here](https://krocketcoding.github.io/rocket-analytics/)
+[See it here](https://rocketanalytics.fyi/)
 
 ## Usage
 
 ```bash
-pip install -r requirements.txt
-python main.py                      # builds the site in the site/ directory
-python main.py --refresh            # ignore the API response cache
-python main.py --max-cache-age 5    # refetch if the cache is over 5 hours old
-python main.py --previous-pages 5   # override the per-endpoint page counts (--upcoming-pages works the same way)
-python -m unittest discover tests   # run the Python unit tests
-node --test                         # run the JS test suite (npm test does the same; needs a prior build for two files)
+pip install -r requirements.txt       # install dependencies
+python main.py                        # build the site into site/, fully offline
+python main.py build --fetch          # fetch the latest API changes first, then build
+python main.py update-archive         # refresh launch-archive/ from the API (no site build)
+python main.py [command] --help       # show all options for a command
 ```
 
-Fetched launch data is cached in `launch-cache.json` (git ignored) and reused regardless of age unless `--refresh` or
-`--max-cache-age` says otherwise, so repeated builds during development don't re-hit the rate-limited API. If a fetch
-fails, the script falls back to the stale cache rather than failing the build. Each endpoint fetches
-`PAST_LAUNCH_PAGES`/`UPCOMING_LAUNCH_PAGES` pages by default (set in `pipeline/config.py`, 100 launches per page);
-`--upcoming-pages` and `--previous-pages` override that for a single run. Set the `LL2_API_KEY` environment variable
-to authenticate with a TheSpaceDevs API key — the anonymous per-IP rate limit is small, and a key raises it.
+Open `site/index.html` in a browser to preview. Each build also produces `site/rocket-analytics-offline.html`, a
+self-contained single-file version of the site. Set `LL2_API_KEY` to authenticate with a TheSpaceDevs API key —
+the anonymous rate limit is small.
 
-Open `site/index.html` in a browser to preview. Launch update text ships separately as `site/launch-updates.js`:
-it's roughly half the gzipped dataset but is only read when a launch's Updates tab opens, so the page loads it
-lazily after the first render (or on demand when a modal opens).
-
-Each build also produces `site/rocket-analytics-offline.html`, a portable single-file version of the site with the
-stylesheet and all JavaScript inlined — it can be opened in any browser without an internet connection. Mission
-patches and rocket images are downloaded, downscaled to display size, and embedded as WebP data URIs in the
-dataset's `images` table (the slots for every other image read `null`; `PATCH_IMAGE_PX`, `ROCKET_IMAGE_PX`, and
-`IMAGE_QUALITY` in `pipeline/config.py` control the size/quality tradeoff); all remote URLs and external links are
-stripped out. Processed images are cached in `image-cache/` (gitignored) so repeat builds don't re-download them.
-The Chart.js library is vendored as `static/chart-library.min.js` and used by both versions of the site; the
-offline build is skipped if a static file is missing.
-
-## How it works
-
-- `main.py` drives the `pipeline` package, which fetches upcoming and previous launches, normalizes them into one
-  dataset, and renders `templates/index.html` into `site/` — once as `index.html` and once as
-  `rocket-analytics-offline.html`, a self-contained single-file build with all resources inlined to work offline.
-- `static/` is copied to `site/static/`. In `index.html` the CSS and JS URLs carry a `?v=<content hash>` query, so a
-  deploy can't pair new HTML with a stale cached script (GitHub Pages caches assets for 10 minutes).
-- The GitHub Actions workflow in `.github/workflows/deploy.yml` rebuilds and deploys the site in a single job on every
-  push to `master`, every 6 hours on a schedule, and on manual dispatch.
-- The workflow runs `main.py --max-cache-age 5` and persists `launch-cache.json` and `image-cache/` between runs via
-  `actions/cache` (one `data-cache-` entry), so push-triggered rebuilds within 5 hours of the last fetch skip the API
-  entirely while the 6-hourly schedule always refreshes. It passes the `LL2_API_KEY` repository secret to the API
-  fetch when one is configured; with no secret the build stays on the anonymous rate limit.
-- After the build, CI runs both test suites (`python -m unittest discover tests` and `node --test`); a failure stops
-  the deploy before the artifact uploads.
-- Workflow runs share a `pages` concurrency group: pushes cancel any in-progress run so the newest commit deploys
-  promptly, while scheduled and manual runs queue instead.
+Launch data lives in two places: `launch-archive/`, a committed archive of every previous launch so clones can
+build without the API, and `launch-cache.json` (git ignored), the delta of records fetched since the archive last
+updated. Builds merge them per record — newest `last_updated` wins — so a stale cache can't roll back a fresher
+archive. `update-archive` is the archive's only writer: fetches pull just what changed (a few requests, not
+dozens), every page is checkpointed so interrupted crawls resume, and a weekly CI job runs it and commits the
+result. To rebuild from scratch, delete `launch-archive/` and run it again.
 
 ## Project layout
 
-The pipeline is one module per step; data flows roughly like this:
+The pipeline is one module per step; data flows like this:
 
 ```
-LL2 API ──fetch──> launch dicts ──normalize──> one dataset
-                      │                             │
-                      └──> launch-cache.json        └──> Jinja page shell
-                                                              │
-                                            templates/index.html + static/
-                                                              │
+                 ┌─> launch-archive/ (committed)  ─────────┐
+LL2 API ──fetch──┤                                         ├─ merge by id,
+                 └─> launch-cache.json (upcoming + delta) ─┘   newest wins
+                                                                 │
+                                           normalize ─> shipped dataset
+                                                                 │
+                                       templates/index.html + static/
+                                                                 │
                             site/index.html (`data` JSON; update text
                             split out into launch-updates.js, loaded
                             lazily) + offline bundle (updates inline)
-                                                              │
+                                                                 │
                             stats.js/tables.js/charts.js derive everything
                             in the browser from that one `data` block
 ```
 
-The dataset is the key idea: launch records reference shared entity tables (`agencies`, `rockets`, `pads`,
-`locations`, `statuses`, `programs`, `authors`) by id and image URLs by index into a deduplicated `images` list, so
-no provider, location string, or avatar URL ships twice. All aggregation and rendering — stats, tables, modals,
-charts — happens in JavaScript from that single block; Jinja only renders the page shell around it.
+The dataset is the key idea: launch records reference shared entity tables by id and image URLs by index, so
+nothing is duplicated. Aggregation and rendering all happen in JavaScript off that one block.
 
-- `main.py` — command-line entry point. Decides between cached data and a fresh fetch, then hands everything to the
-  builder.
-- `package.json` — no dependencies; it only provides `npm test` (alias for `node --test`) and a Node version
-  floor for the JS test suite.
-- `pipeline/config.py` — all tunables and file locations in one place (page counts, API base URL and key env var,
-  directory paths).
-  Start here to change how much data is fetched or where things live.
-- `pipeline/api.py` — paginated requests to the Launch Library 2 API with retries; sends an `Authorization: Token`
-  header when `LL2_API_KEY` is set. The API returns 100 launches per page plus a `next` link.
-- `pipeline/launch_cache.py` — reads/writes `launch-cache.json` so development builds don't re-hit the rate-limited
-  API.
-- `pipeline/details.py` — selects which API fields the site actually uses. The API returns very large launch objects;
-  the `*_FIELDS` specs and `pick`/`pull` helpers copy just the needed fields into flat dicts.
-- `pipeline/dataset.py` — normalizes the launches into the single dataset the site ships: launch records referencing
-  entity tables by id and interned image URLs by index, with null/empty fields dropped.
-- `pipeline/build.py` — renders `templates/index.html` into `site/` with the dataset as the one `data` JSON block,
-  writes the lazily loaded `site/launch-updates.js` companion script, versions the CSS/JS URLs with content hashes,
-  and hands off to the offline build.
-- `pipeline/offline_bundle.py` — the offline single-file build: downloads and downscales mission patch / rocket images
-  into data URIs inside the dataset's `images` table, strips remote URLs, and re-renders the template with
-  everything inlined.
-- `templates/index.html` — the site's markup as one minimal Jinja shell: head, header, `#workspace`, footer, the
-  `data` JSON block, and the script tags. All view markup is built in JavaScript.
-- `static/` — front-end code and assets, copied into `site/` verbatim and inlined for the offline build:
-  - `style.css` — the whole stylesheet.
-  - `app.js` — parses the dataset, builds and drives the detail modals (update text loads lazily from
-    `launch-updates.js` online), and holds the shared formatting helpers.
-  - `stats.js` — computes the chart aggregations in the browser: per-year launch counts by rocket, rocket family,
-    manufacturer, country, and launch site, split into orbital, suborbital, and failed segments, with site and
-    family rows keeping a nested per-rocket tally so the rocket filter and variant stacking can re-slice them.
-    The oldest year is dropped when `meta.truncated` flags that the newest-first fetch was cut mid-year at
-    the page cap; the launch tables keep its real rows but flag the year as partial in the row-count note.
-  - `chart-factories.js` — the Chart.js factories and the chart view contract (page, pageCount, setPage,
-    setPageSize, setData).
-  - `chart-defs.js` — the CHART_DEFS registry and its data-slicing helpers.
-  - `charts.js` — the per-pane filter controls (year scope, country/rocket/entity popovers, toggles, rows per
-    page) and pager.
-  - `tables.js` — the table views and their CSV export (one column spec drives both); the launch tables are
-    scoped by year.
-  - `workspace.js` — the two-pane workspace: view pickers, divider drag, maximize, PNG/CSV export, and
-    URL/localStorage persistence.
-  - `chart-library.min.js` — vendored Chart.js.
-- `tests/` — the test suites:
-  - `test_dataset.py` — dataset invariants against the real launch cache (references, orphans, offline scrub,
-    update splitting).
-  - `test_helpers.py` — unit tests for the small helpers: `drop_empty`, `pick`/`pull`, `link_details`, cache
-    load/save, and API retry behavior.
-  - `stats.test.js` — Node test asserting the chart-stat invariants on the built `site/index.html`.
-  - `scripts.test.js` — Node test concatenating the classic scripts to catch top-level name collisions.
-  - `fixtures.js` — shared miniature `DATA` dataset the unit-style Node tests load into a vm sandbox.
-  - `compute-stats.test.js` — unit tests for `stats.js`'s `computeStats` against the fixture: categories,
-    grouping shapes, truncation, `orbitCapable`, and the country/site/family maps.
-  - `chart-helpers.test.js` — unit tests for `chart-defs.js`'s data slicers (country/orbital filters, donut
-    and trend slicing, site/family/manufacturer regrouping) and `chart-factories.js`'s paging and
-    segment-stack logic.
-  - `trend-domain.test.js` — unit tests for the trend chart's year trimming and the shared-domain contract
-    (`setXLabels`/`ownLabels`) the side-by-side x-axis sync relies on.
-  - `app-boot.test.js` — boots the front end over a stub DOM, then tests the URL-hash persistence
-    (`serialize`/`parseState` round-trip and malformed-input tolerance) and the small helpers
-    (`esc`, `isWebUrl`, `fmtDuration`, `imgSrc`).
-- `api-examples/` — sample API responses. Open these to see the raw shape of a launch record before `dataset.py`
-  normalizes it.
+- `main.py`: `build` and `update-archive` commands.
+- `pipeline/config.py`: All tunables and file locations in one place. Start here to change what or where things are.
+- `pipeline/api.py`: LL2 requests with retries; page iterators pace themselves against the reported API quota.
+- `pipeline/archive.py`: The `launch-archive/` store: JSONL shards with entities deduplicated into id-keyed tables.
+- `pipeline/launch_cache.py`: The git ignored delta file.
+- `pipeline/details.py`: Which API fields the site keeps.
+- `pipeline/dataset.py`: Normalize launches into the shipped dataset.
+- `pipeline/build.py` + `pipeline/offline_bundle.py`: Render `index.html` and the inlined offline build.
+- `templates/index.html`: Jinja page shell; all view markup is built in JavaScript.
+- `static/`: Front-end JavaScript (load order in `config.py`'s `JS_FILES`) and `style.css`:
+  `app.js` (dataset parsing, modals), `stats.js` (chart aggregations), `chart-defs.js`/`chart-factories.js`/
+  `charts.js` (chart registry, factories, controls), `tables.js` (tables + CSV export), `workspace.js` (two-pane
+  layout + persistence), `chart-library.min.js` (vendored Chart.js).
+- `tests/`: Python unit tests (`test_*.py`: helpers, archive store, dataset invariants) and Node tests
+  (`*.test.js`: stats, charts, UI helpers, plus `fixtures.js`).
+- `api-examples/`: Raw API responses, for seeing a launch record's shape before normalization.
 
-**Reading the code:** follow the data. Start at `main.main()`, then `api.fetch_launches()` for input,
-`dataset.build_dataset()` for normalization, and `build.build_site()` / `offline_bundle.build_offline_bundle()` for
-output. On the front end, start at `app.js`'s `DATA` parse, then `stats.js`'s `computeStats()` for the aggregations
-the charts read.
+**Reading the code:** follow the data — `main.py` → `api.py` → `archive.py`/`launch_cache.py` → `dataset.py` →
+`build.py`; on the front end, `app.js` → `stats.js` → the chart and table files.
+
+## GitHub Actions
+
+Two automated workflows: 
+- `deploy.yml` rebuilds the site on every push to `master`, every 4 hours on a schedule, and on dispatch; 
+- `archive.yml` runs `update-archive` weekly and commits the result. Both run the test suites before deploying.
 
 ## Useful Links
-- Launch Library 2 API
-  - [Documentation](https://ll.thespacedevs.com/docs/)
-  - [FAQ](https://github.com/TheSpaceDevs/Tutorials/blob/main/faqs/faq_LL2.md)
-- Chart.js (v4.5.1)
-  - [Documentation](https://www.chartjs.org/docs/4.5.1/)
-  - [Sample charts](https://www.chartjs.org/docs/4.5.1/samples/)
+
+- Launch Library 2 API: [Documentation](https://ll.thespacedevs.com/docs/) ·
+  [FAQ](https://github.com/TheSpaceDevs/Tutorials/blob/main/faqs/faq_LL2.md)
+- Chart.js (v4.5.1): [Documentation](https://www.chartjs.org/docs/4.5.1/) ·
+  [Samples](https://www.chartjs.org/docs/4.5.1/samples/)
+
+## License
+
+This project's code is MIT licensed. Launch data — including the committed `launch-archive/` — comes from
+[The Space Devs' Launch Library 2](https://thespacedevs.com/llapi) and is used under
+[their terms of use](https://github.com/TheSpaceDevs/Tutorials/blob/main/faqs/faq_TSD.md); it is not covered by the
+MIT license.

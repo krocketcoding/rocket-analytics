@@ -5,7 +5,7 @@ import time
 
 import requests
 
-from .config import API_BASE, API_KEY_ENV, MAX_ATTEMPTS, PAGE_SIZE, RETRY_DELAY
+from .config import (API_BASE, API_KEY_ENV, CRAWL_PAGE_DELAY, MAX_ATTEMPTS, PAGE_SIZE, RETRY_DELAY)
 
 
 def get_json(endpoint, params):
@@ -57,3 +57,93 @@ def fetch_launches(endpoint, pages):
             print("No more pages to fetch.")
             break
     return results
+
+
+def iter_launch_pages(endpoint, params):
+    """Yield each page of results from an endpoint, following `next` to the end.
+
+    One HTTP request per yielded page, so callers can checkpoint between
+    pages and pace themselves against LL2's hourly quota."""
+    params = {"limit": PAGE_SIZE, **params}
+    offset = 0
+    while True:
+        data = get_json(endpoint, {**params, "offset": offset})
+        print(f"Got page with offset {offset}")
+        yield data["results"]
+        if not data.get("next"):
+            break
+        offset += PAGE_SIZE
+
+
+def iter_previous_since(last_updated, mode="detailed"):
+    """Yield previous-launch pages modified since `last_updated`, oldest change first.
+
+    Ascending last_updated order means each page's records all postdate
+    the previous page's — a caller can advance its watermark after every
+    page and safely resume if interrupted."""
+    params = {"ordering": "last_updated", "mode": mode}
+    if last_updated:
+        params["last_updated__gte"] = last_updated
+    return iter_launch_pages("previous", params)
+
+
+def iter_previous_before(net=None, mode="detailed"):
+    """Yield previous-launch pages newest-first, optionally before `net`.
+
+    A `net` cursor (instead of offset) stays stable when launches are
+    added or moved mid-crawl: paginating by offset could skip or repeat
+    records as the result set shifts underneath."""
+    params = {"ordering": "-net", "mode": mode}
+    if net:
+        params["net__lt"] = net
+    return iter_launch_pages("previous", params)
+
+
+def probe_count():
+    """Total previous-launch count from the API (one request, one record)."""
+    return get_json("previous", {"limit": 1})["count"]
+
+
+def throttle_status():
+    """The caller's LL2 rate-limit state, as reported by the api-throttle endpoint.
+
+    LL2 documents this endpoint as free — it reports the quota without
+    counting a request against it. Shape: {"your_request_limit": N,
+    "limit_frequency_secs": S, "current_use": N, "next_use_secs": N}."""
+    api_key = os.environ.get(API_KEY_ENV)
+    headers = {"Authorization": f"Token {api_key}"} if api_key else {}
+    return requests.get(f"{API_BASE}/api-throttle/", headers=headers, timeout=60).json()
+
+
+# Requests to keep in reserve so a crawl doesn't brick other API users
+# sharing the quota (e.g. a scheduled build overlapping a manual run).
+QUOTA_MARGIN = 1
+# Wait before re-probing when the endpoint reports exhaustion without a
+# reset hint — avoids busy-looping a free endpoint.
+QUOTA_RETRY_SECS = 60
+
+
+def paced_pages(page_iter):
+    """Yield launch pages, pausing only when the LL2 quota is actually empty.
+
+    The throttle endpoint reports the real remaining budget — keyed or
+    anonymous, shared or solo — so we consume it immediately and only
+    sleep when it reports exhaustion. Falls back to the static crawl delay 
+    if the probe fails."""
+    remaining = 0
+    for page in page_iter:
+        yield page
+        remaining -= 1
+        while remaining <= 0:
+            try:
+                status = throttle_status()
+            except requests.RequestException:
+                # Can't read the quota; assume a conservative fixed pace.
+                remaining = 1
+                time.sleep(CRAWL_PAGE_DELAY)
+                break
+            remaining = max(status["your_request_limit"] - status["current_use"] - QUOTA_MARGIN, 0)
+            if remaining == 0:
+                wait = max(status.get("next_use_secs") or 0, QUOTA_RETRY_SECS)
+                print(f"API quota exhausted; waiting {wait}s for it to refill...")
+                time.sleep(wait)

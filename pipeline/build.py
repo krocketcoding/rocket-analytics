@@ -28,7 +28,7 @@ def asset_url(path):
     return versioned(f"{STATIC_DIR.name}/{path.name}", path.read_bytes())
 
 
-def build_site(upcoming, previous, data_updated):
+def build_site(upcoming, previous, data_updated, complete=True):
     """Render the page shell around the normalized dataset into site/."""
     env = Environment(loader=FileSystemLoader(TEMPLATES_DIR),
                       autoescape=select_autoescape(("html",)))
@@ -50,7 +50,7 @@ def build_site(upcoming, previous, data_updated):
     # Tell GitHub Pages not to run the site through Jekyll.
     (SITE_DIR / ".nojekyll").touch()
 
-    dataset = build_dataset(upcoming, previous, data_updated)
+    dataset = build_dataset(upcoming, previous, data_updated, complete)
     # Update text is ~half the gzipped dataset but only the modal's
     # Updates tab reads it — online it ships as launch-updates.js and
     # loads lazily. The offline build keeps the full dataset inline, so

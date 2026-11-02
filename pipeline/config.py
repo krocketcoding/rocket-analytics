@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-PAST_LAUNCH_PAGES = 10
 UPCOMING_LAUNCH_PAGES = 2
 PAGE_SIZE = 100
 MAX_ATTEMPTS = 2
@@ -19,6 +18,13 @@ SITE_DIR = ROOT / "site"
 TEMPLATES_DIR = ROOT / "templates"
 STATIC_DIR = ROOT / "static"
 LAUNCH_CACHE_FILE = ROOT / "launch-cache.json"
+# Committed archive of deduplicated raw LL2 records; launch-archive/ is
+# generated data but tracked so clones have a complete initial dataset.
+ARCHIVE_DIR = ROOT / "launch-archive"
+# Fallback seconds-between-requests for crawls when the api-throttle
+# probe fails — the real pacing adapts to the quota it reports, so this
+# just needs to be safely conservative (15/hr is the anonymous limit).
+CRAWL_PAGE_DELAY = 3600 / 13
 
 # Alternate output: a portable offline single-file build with all
 # resources inlined.

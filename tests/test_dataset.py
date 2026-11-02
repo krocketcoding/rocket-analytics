@@ -11,7 +11,7 @@ import json
 import unittest
 from unittest import mock
 
-from pipeline.config import LAUNCH_CACHE_FILE, PAGE_SIZE, PAST_LAUNCH_PAGES
+from pipeline.config import LAUNCH_CACHE_FILE
 from pipeline.dataset import build_dataset, split_updates
 from pipeline.offline_bundle import offline_dataset
 
@@ -128,9 +128,11 @@ class DatasetTest(unittest.TestCase):
                 self.assertNotEqual(v, "")
                 self.assertNotEqual(v, [])
 
-    def test_truncated_flag_follows_page_cap(self):
-        self.assertEqual(self.data["meta"]["truncated"],
-                         len(self.previous) >= PAST_LAUNCH_PAGES * PAGE_SIZE)
+    def test_truncated_flag(self):
+        # Default complete=True -> not truncated; explicit incomplete -> truncated.
+        self.assertFalse(self.data["meta"]["truncated"])
+        partial = build_dataset([], [], None, complete=False)
+        self.assertTrue(partial["meta"]["truncated"])
 
     def test_split_updates(self):
         # The input must survive intact — the offline build renders it
