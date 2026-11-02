@@ -66,7 +66,6 @@ nothing is duplicated. Aggregation and rendering all happen in JavaScript off th
   layout + persistence), `chart-library.min.js` (vendored Chart.js).
 - `tests/`: Python unit tests (`test_*.py`: helpers, archive store, dataset invariants) and Node tests
   (`*.test.js`: stats, charts, UI helpers, plus `fixtures.js`).
-- `api-examples/`: Raw API responses, for seeing a launch record's shape before normalization.
 
 **Reading the code:** follow the data — `main.py` → `api.py` → `archive.py`/`launch_cache.py` → `dataset.py` →
 `build.py`; on the front end, `app.js` → `stats.js` → the chart and table files.

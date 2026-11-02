@@ -17,7 +17,9 @@
   {# Online scripts go in <head> with defer: the preload scanner finds
      them immediately and downloads them while the large data block
      streams. defer preserves order and runs after parsing, so app.js
-     still sees the DOM and the data block below. #}
+     still sees the DOM and the data block below. The load order itself
+     lives in JS_FILES (pipeline/config.py) — the offline build
+     concatenates the same list. #}
   {% for src in js_srcs %}
   <script defer src="{{ src }}"></script>
   {% endfor %}

@@ -54,9 +54,8 @@ def save_cache(upcoming, delta):
     """Save the fetched launches to the cache file; return last_updated."""
     last_updated = datetime.now(timezone.utc).isoformat()
     try:
-        # Compact separators — CI restores and rewrites this file every
-        # run, and api-examples/ already shows the raw launch shape to
-        # anyone curious about the contents.
+        # Compact separators — this file is rewritten every fetch and
+        # never read by humans.
         LAUNCH_CACHE_FILE.write_text(
             json.dumps({"upcoming": upcoming, "previous_delta": delta, "last_updated": last_updated},
                        separators=(",", ":")),
