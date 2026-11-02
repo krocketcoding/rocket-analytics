@@ -15,7 +15,7 @@
 const TABLE_VIEWS = {
   upcoming: {label: 'Upcoming launches', kind: 'Tables', filters: ['cols', 'q']},
   past:     {label: 'Previous launches', kind: 'Tables', filters: ['launchYear', 'cols', 'q']},
-  rockets:  {label: 'Rockets',           kind: 'Tables', filters: ['cols', 'q']},
+  rockets:  {label: 'Rockets',           kind: 'Tables', filters: ['activeOnly', 'cols', 'q']},
 };
 const VIEW_DEFS = {...CHART_DEFS, ...TABLE_VIEWS};
 const isChart = id => id in CHART_DEFS;
@@ -79,6 +79,26 @@ FILTER_BUILDERS.launchYear = (pane, onChange) => {
     refreshTable(pane);
     onChange();
   }, scopes);
+};
+
+// The 'activeOnly' filter: an "Active only" checkbox on the rockets
+// table. Like the year scope it's a row filter, so a change rebuilds
+// the table (re-running the search filter over the new rows) — it
+// can't reuse charts.js's makeToggle, whose reload only reloads a
+// chart dataset.
+FILTER_BUILDERS.activeOnly = (pane, onChange) => {
+  const label = document.createElement('label');
+  label.className = 'success-toggle';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.checked = !!pane.filters.activeOnly;
+  cb.addEventListener('change', () => {
+    pane.filters.activeOnly = cb.checked;
+    refreshTable(pane);
+    onChange();
+  });
+  label.append(cb, ' Active only');
+  return label;
 };
 
 // Table filter state: the search text, the optional-column pick, plus
@@ -471,7 +491,8 @@ function exportCsv(pane) {
 // c: country codes (! = exclude); e: entity picks; r: rocket picks;
 // so/cm/vs/oc: successes-only/cumulative/variant/orbit-capable toggles;
 // ps: bar-chart rows per page; q: table search; k: optional columns;
-// t: rockets sort as <key>.<dir>. The same string is kept in
+// t: rockets sort as <key>.<dir>; ao: rockets active-only toggle. The
+// same string is kept in
 // localStorage so the layout survives between visits; the hash wins
 // on load.
 const STORAGE_KEY = 'ra-workspace';
@@ -506,6 +527,7 @@ const paneTokens = p => {
     // writes {sort, dir} into it on each header click.
     if (p.defId === 'rockets' && f.sort)
       t.push('t' + f.sort + '.' + (f.dir || 'desc'));
+    if (p.defId === 'rockets' && f.activeOnly) t.push('ao');
     if (f.cols?.size) t.push('k' + encList([...f.cols].sort()));
   }
   return t;
@@ -547,6 +569,7 @@ function parseState(str) {
       else if (t === 'cm') f.cumulative = true;
       else if (t === 'vs') f.variantStack = true;
       else if (t === 'oc') f.orbitCapable = true;
+      else if (t === 'ao') f.activeOnly = true;
       else if (/^y\d{4}$/.test(t)) f.year = t.slice(1);
       else if (/^c/.test(t)) {
         const neg = t[1] === '!';

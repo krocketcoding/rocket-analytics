@@ -87,7 +87,10 @@ const defaultRocketRows = () =>
 // Re-sort from the default order so a stored sort replays
 // deterministically; unknowns stay at the bottom in either direction.
 function rocketRows(pane) {
-  const rows = defaultRocketRows();
+  // The 'Active only' toggle keeps just rockets known to be active —
+  // a null active flag (no status on record) can't confirm it is.
+  const rows = defaultRocketRows()
+    .filter(r => !pane.filters.activeOnly || r.rec.active === true);
   const key = pane.filters.sort;
   if (!key) return rows;
   const mul = (pane.filters.dir || 'desc') === 'desc' ? 1 : -1;
@@ -148,7 +151,8 @@ const TABLE_SPECS = {
   rockets: {
     cols: rocketCols,
     rows: rocketRows,
-    note: (pane, n) => `Showing ${n} rockets observed in launches` +
+    note: (pane, n) => `Showing ${n} ${pane.filters.activeOnly ? 'active ' : ''}` +
+      `rockets observed in launches` +
       (FIRST_LAUNCH_DATE ? ` since ${FIRST_LAUNCH_DATE}` : ''),
   },
 };

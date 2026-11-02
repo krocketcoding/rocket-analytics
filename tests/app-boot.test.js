@@ -255,6 +255,17 @@ test('the column pick serializes and parses back', () => {
                    ['orbit', 'provider']);
 });
 
+test('the rockets active-only toggle serializes and parses back', () => {
+  const x = loadApp(makeData());
+  x.applyState({ratio: 0.5, focus: 'split', views: [
+    {v: 'by-rocket', f: {}},
+    {v: 'rockets', f: {activeOnly: true}},
+  ]});
+  assert.equal(x.serialize(), 'by-rocket|rockets;ao');
+  const s = x.parseState('by-rocket|rockets;ao');
+  assert.equal(s.views[1].f.activeOnly, true);
+});
+
 test('parseState tolerates malformed input', () => {
   const x = loadApp(makeData());
   assert.equal(x.parseState(null), null);

@@ -87,6 +87,17 @@ test('rocketRows honors an ascending stored sort', () => {
   assert.equal(rows.at(-1).rec.name, 'Falcon 9');
 });
 
+test('rocketRows activeOnly keeps only rockets flagged active', () => {
+  const x = loadTables(makeData());
+  const p = pane('rockets', {activeOnly: true});
+  // Falcon 9 is the fixture's only active rocket — OldOrb is retired
+  // and the rest carry no status flag at all.
+  const names = x.rocketRows(p).map(r => r.rec.name);
+  assert.equal(names.length, 1);
+  assert.equal(names[0], 'Falcon 9');
+  assert.match(x.TABLE_SPECS.rockets.note(p, 1), /1 active rockets/);
+});
+
 test('tableCsv quotes every cell and doubles inner quotes', () => {
   const x = loadTables(makeData());
   const csv = x.tableCsv(pane('upcoming'));
