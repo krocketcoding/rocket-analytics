@@ -1,4 +1,4 @@
-"""Sanity checks for pipeline.dataset and the offline variant, run against the real launch cache.
+"""Sanity checks for pipeline.dataset and the offline variant, run against real launch data.
 
 These pin the normalized-dataset invariants (every id reference resolves, no orphan
 entities or unreferenced images, no empty values, the truncation flag) so a regression
@@ -7,12 +7,13 @@ render. Run from the repo root with: python -m unittest discover tests
 """
 
 import copy
-import json
 import unittest
 from unittest import mock
 
+from pipeline.archive import load_archive, merged_previous, new_entities
 from pipeline.config import LAUNCH_CACHE_FILE
 from pipeline.dataset import build_dataset, split_updates
+from pipeline.launch_cache import load_cache
 from pipeline.offline_bundle import offline_dataset
 
 CACHE = LAUNCH_CACHE_FILE
@@ -50,14 +51,21 @@ def image_indices(data):
     return idx
 
 
+def load_inputs():
+    """(upcoming, previous, last_updated) — the same records cmd_build feeds build_dataset."""
+    upcoming, delta, last_updated = load_cache()
+    loaded = load_archive()
+    entities, store = (loaded[0], loaded[1]) if loaded else (new_entities(), {})
+    return upcoming, merged_previous(store, delta, entities), last_updated
+
+
 @unittest.skipUnless(CACHE.exists(), "requires launch-cache.json")
 class DatasetTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cache = json.loads(CACHE.read_text(encoding="utf-8"))
-        cls.raw = cache["upcoming"] + cache["previous"]
-        cls.previous = cache["previous"]
-        cls.data = build_dataset(cache["upcoming"], cls.previous, cache["last_updated"])
+        upcoming, cls.previous, last_updated = load_inputs()
+        cls.raw = upcoming + cls.previous
+        cls.data = build_dataset(upcoming, cls.previous, last_updated)
         cls.launches = cls.data["upcoming"] + cls.data["previous"]
 
     def test_every_reference_resolves(self):
@@ -158,8 +166,8 @@ class DatasetTest(unittest.TestCase):
 class OfflineDatasetTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cache = json.loads(CACHE.read_text(encoding="utf-8"))
-        cls.data = build_dataset(cache["upcoming"], cache["previous"], cache["last_updated"])
+        upcoming, previous, last_updated = load_inputs()
+        cls.data = build_dataset(upcoming, previous, last_updated)
 
     def test_offline_dataset(self):
         # Stand in for fetch+cache: every wanted image "embeds" as a fake data URI.
