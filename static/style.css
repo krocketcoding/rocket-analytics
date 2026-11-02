@@ -344,10 +344,42 @@ main {
 .pager-select {
   background: var(--surface);
   border: none;
-  border-left: 1px solid var(--border);
   color: var(--muted);
   font-size: 0.85rem;
   padding: 0 0.5rem;
+}
+
+.year-pager .pager-select {
+  padding: 0.4rem 0.6rem;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.year-pager > button:not([hidden]) + .pager-select {
+  border-left: 1px solid var(--border);
+}
+
+.year-pager > .pager-select:not(:last-child) {
+  border-right: 1px solid var(--border);
+}
+
+.year-pager > .pager-select:only-child,
+.year-pager > button[hidden] + .pager-select:last-child {
+  border-radius: 7px;
+}
+
+.year-pager > button[hidden] + .pager-select:not(:last-child) {
+  border-top-left-radius: 7px;
+  border-bottom-left-radius: 7px;
+}
+
+.year-pager > .pager-select:last-child {
+  border-top-right-radius: 7px;
+  border-bottom-right-radius: 7px;
+}
+
+.year-pager .seg-btn {
+  padding: 0.4rem 0.65rem;
 }
 
 .pager-total {

@@ -35,7 +35,19 @@ function makeEl() {
     querySelectorAll(sel) {
       return sel === '.seg-btn' ? [makeEl(), makeEl()] : [];
     },
-    addEventListener() {}, removeEventListener() {},
+    listeners: {},
+    addEventListener(event, fn) {
+      (this.listeners[event] ??= []).push(fn);
+    },
+    removeEventListener(event, fn) {
+      if (this.listeners[event]) {
+        this.listeners[event] = this.listeners[event].filter(f => f !== fn);
+      }
+    },
+    dispatchEvent(event) {
+      const type = typeof event === 'string' ? event : event.type;
+      (this.listeners[type] || []).forEach(fn => fn.call(this, {type, target: this}));
+    },
     setAttribute() {}, getAttribute() { return null; },
     remove() {}, focus() {}, close() {}, showModal() {},
     contains() { return false; },
@@ -91,6 +103,7 @@ function loadApp(data) {
 this.__x = {
   get panes() { return panes; },
   parseState, serialize, applyState, setFocus, loadState, defaultState,
+  makeScopeSelect,
   esc, fmtDuration, isWebUrl, imgSrc, num, yesNo,
   DATA, STATS, CHART_DEFS, VIEW_DEFS, LAUNCH_SCOPES, freshFilters,
 };`, sandbox);
@@ -131,6 +144,59 @@ test('imgSrc resolves indices against the interned image table', () => {
   assert.equal(imgSrc(0), 'https://img/0.png');  // index 0 is real
   assert.equal(imgSrc(1), null);                // null slot
   assert.equal(imgSrc(5), null);                // out of range
+});
+
+// --- year pagination control -------------------------------------------
+
+test('makeScopeSelect builds a segmented pagination control and hides arrows at bounds', () => {
+  const {makeScopeSelect} = loadApp(makeData());
+  const scopes = ['2025', '2024', '2023'];
+  const changes = [];
+  const el = makeScopeSelect('2025', v => changes.push(v), scopes);
+
+  // el has prev button, select, and next button
+  const [prev, sel, next] = el.children;
+  assert.equal(el.className, 'seg year-pager');
+  assert.equal(el.hidden, false);
+  assert.equal(prev.textContent, '‹');
+  assert.equal(next.textContent, '›');
+  assert.equal(sel.value, '2025');
+
+  // At index 0 (newest year), prev (‹) should be hidden, next (›) visible
+  assert.equal(prev.hidden, true);
+  assert.equal(next.hidden, false);
+
+  // Click next (›) -> moves to index 1 ('2024')
+  next.dispatchEvent('click');
+  assert.equal(sel.value, '2024');
+  assert.deepEqual(changes, ['2024']);
+  assert.equal(prev.hidden, false);
+  assert.equal(next.hidden, false);
+
+  // Click next (›) again -> moves to index 2 ('2023')
+  next.dispatchEvent('click');
+  assert.equal(sel.value, '2023');
+  assert.deepEqual(changes, ['2024', '2023']);
+  assert.equal(prev.hidden, false);
+  assert.equal(next.hidden, true);
+
+  // Click prev (‹) -> moves back to index 1 ('2024')
+  prev.dispatchEvent('click');
+  assert.equal(sel.value, '2024');
+  assert.deepEqual(changes, ['2024', '2023', '2024']);
+  assert.equal(prev.hidden, false);
+  assert.equal(next.hidden, false);
+
+  // Direct select change -> moves to index 0 ('2025')
+  sel.value = '2025';
+  sel.dispatchEvent('change');
+  assert.deepEqual(changes, ['2024', '2023', '2024', '2025']);
+  assert.equal(prev.hidden, true);
+  assert.equal(next.hidden, false);
+
+  // Single scope hides the control
+  const single = makeScopeSelect('2025', () => {}, ['2025']);
+  assert.equal(single.hidden, true);
 });
 
 // --- boot + persistence -------------------------------------------------
