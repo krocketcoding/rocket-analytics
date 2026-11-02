@@ -35,9 +35,11 @@ function makeScopeSeg(scope, onChange, scopes) {
 // flanking a <select> dropdown, used by both year pickers (chart scope and the
 // past-launches table). Years are sorted newest-first (index 0 is the newest year).
 // Clicking ‹ advances to a newer year (index - 1), clicking › advances to an
-// older year (index + 1). The arrow buttons hide when at the bounds.
+// older year (index + 1). The arrow buttons hide when at the bounds — and while
+// a topOptions entry is selected, since those [value, label] pairs head the
+// drop-down outside the year stepping (the charts' all-time pick).
 // Reports the choice via onChange; hides itself when scopes.length <= 1.
-function makeScopeSelect(scope, onChange, scopes) {
+function makeScopeSelect(scope, onChange, scopes, topOptions = []) {
   const el = document.createElement('div');
   el.className = 'seg year-pager';
 
@@ -50,10 +52,10 @@ function makeScopeSelect(scope, onChange, scopes) {
   const sel = document.createElement('select');
   sel.className = 'pager-select';
   sel.setAttribute('aria-label', 'Year');
-  scopes.forEach(v => {
+  [...topOptions, ...scopes.map(v => [v, v])].forEach(([v, text]) => {
     const o = document.createElement('option');
     o.value = v;
-    o.textContent = v;
+    o.textContent = text;
     sel.append(o);
   });
   sel.value = scope;
@@ -322,13 +324,15 @@ const makeToggle = (text, key) => (slot, reload) => {
 const FILTER_BUILDERS = {
   year: (slot, reload) => {
     // A stale scope — a year that isn't in the data (e.g. an old saved
-    // hash) — resets to the newest year.
-    if (!ALL_SCOPES.includes(slot.filters.year))
+    // hash) — resets to the newest year. All time is always valid;
+    // it heads the drop-down but never joins the ‹/› stepping.
+    if (slot.filters.year !== ALL_TIME
+        && !ALL_SCOPES.includes(slot.filters.year))
       slot.filters.year = DEFAULT_SCOPE;
     return makeScopeSelect(slot.filters.year, year => {
       slot.filters.year = year;
       reload();
-    }, ALL_SCOPES);
+    }, ALL_SCOPES, [[ALL_TIME, 'All time']]);
   },
   country: (slot, reload) => makeCountryFilter(slot.filters.country,
     reload, CHART_DEFS[slot.defId].countryMap ?? ROCKET_COUNTRIES),

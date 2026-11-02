@@ -196,6 +196,41 @@ test('makeScopeSelect builds a segmented pagination control and hides arrows at 
   assert.equal(single.hidden, true);
 });
 
+test('the all-time pick heads the year drop-down outside the year stepping', () => {
+  const {makeScopeSelect, CHART_DEFS, freshFilters, panes,
+         serialize, parseState} = loadApp(makeData());
+  const changes = [];
+  const el = makeScopeSelect('all', v => changes.push(v),
+    ['2025', '2024', '2023'], [['all', 'All time']]);
+  const [prev, sel, next] = el.children;
+  assert.equal(sel.children[0].textContent, 'All time');
+  // 'all' isn't a year index — both arrows hide while it shows.
+  assert.equal(prev.hidden, true);
+  assert.equal(next.hidden, true);
+  // Stepping still works once a real year is picked.
+  sel.value = '2024';
+  sel.dispatchEvent('change');
+  assert.deepEqual(changes, ['2024']);
+  assert.equal(prev.hidden, false);
+  assert.equal(next.hidden, false);
+
+  // An all-time dataset sums every yearly bucket, sorted by total.
+  assert.deepEqual(norm(CHART_DEFS['by-rocket'].data(freshFilters('all'))), {
+    'Falcon 9': {orbital: 2, suborbital: 0, failed: 1},
+    NoMfr: {orbital: 1, suborbital: 0, failed: 0},
+    OldOrb: {orbital: 1, suborbital: 0, failed: 0},
+    Sounder: {orbital: 0, suborbital: 1, failed: 0},
+  });
+  // The nested buckets (sites/families) merge the same way.
+  assert.deepEqual(norm(CHART_DEFS['by-site'].data(freshFilters('all'))),
+    {'Cape Canaveral SFS': {orbital: 4, suborbital: 1, failed: 1}});
+
+  // 'all' serializes as 'yall' and parses back into the year filter.
+  panes[0].filters.year = 'all';
+  assert.equal(serialize(), 'by-rocket;yall|upcoming');
+  assert.equal(parseState('by-rocket;yall|upcoming').views[0].f.year, 'all');
+});
+
 // --- boot + persistence -------------------------------------------------
 
 test('the workspace boots into the default split layout', () => {

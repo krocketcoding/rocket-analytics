@@ -487,7 +487,8 @@ function exportCsv(pane) {
 // Only non-default values are written, so the default layout hashes to
 // just #by-rocket|upcoming. Multi-value filters are comma lists of
 // percent-encoded names, which keeps ; | @ ^ and , safe as separators.
-// Token keys — y: year scope (charts and the past-launches table);
+// Token keys — y: year scope (charts and the past-launches table;
+// 'yall' is the charts' all-time pick — tables only get real years);
 // c: country codes (! = exclude); e: entity picks; r: rocket picks;
 // so/cm/vs/oc: successes-only/cumulative/variant/orbit-capable toggles;
 // ps: bar-chart rows per page; q: table search; k: optional columns;
@@ -570,7 +571,7 @@ function parseState(str) {
       else if (t === 'vs') f.variantStack = true;
       else if (t === 'oc') f.orbitCapable = true;
       else if (t === 'ao') f.activeOnly = true;
-      else if (/^y\d{4}$/.test(t)) f.year = t.slice(1);
+      else if (/^y(?:\d{4}|all)$/.test(t)) f.year = t.slice(1);
       else if (/^c/.test(t)) {
         const neg = t[1] === '!';
         f.country = {codes: new Set(decList(t.slice(neg ? 2 : 1))),

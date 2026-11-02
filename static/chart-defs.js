@@ -3,9 +3,37 @@
 // helpers the defs' data() functions share. A classic script — uses
 // STATS from stats.js and the factories/views from chart-factories.js;
 // load order is JS_FILES in pipeline/config.py.
+// The year picker's all-time option: a scope value no year can
+// collide with, resolved by yearRows into the sum of every yearly
+// bucket.
+const ALL_TIME = 'all';
+
+// Recursively adds one bucket tree into another — cat rows sit one
+// level deep in the flat buckets (rockets/manufacturers/countries)
+// and two in the nested ones (sites/families).
+const addRows = (dst, src) => {
+  for (const [k, v] of Object.entries(src)) {
+    if (typeof v === 'object') addRows(dst[k] ??= {}, v);
+    else dst[k] = (dst[k] || 0) + v;
+  }
+  return dst;
+};
+
+// A bucket summed across every fetched year, re-sorted by total like
+// the stats build's per-year buckets. Sites/families merge into the
+// nested shape ({outer: {rocket: cats}}) that topNested orders.
+const allRows = key => {
+  const merged = Object.values(STATS.yearly)
+    .reduce((acc, b) => addRows(acc, b[key]), {});
+  const nested = Object.values(merged)
+    .some(row => typeof Object.values(row)[0] === 'object');
+  return (nested ? topNested : topCat)(merged);
+};
+
 // Scope lookup shared by chart defs: a year reads that year's bucket
-// (missing keys -> empty chart).
-const yearRows = (key, year) => STATS.yearly[year]?.[key] ?? {};
+// (missing keys -> empty chart); ALL_TIME sums the whole window.
+const yearRows = (key, year) =>
+  year === ALL_TIME ? allRows(key) : STATS.yearly[year]?.[key] ?? {};
 
 // Entity pickers list everything chartable in the fetched window — the
 // union of yearly bucket keys, which only exist for names that flew.
