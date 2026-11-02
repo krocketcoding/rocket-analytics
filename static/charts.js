@@ -31,15 +31,24 @@ function makeScopeSeg(scope, onChange, scopes) {
   return el;
 }
 
-// Drop-down scope control — a <select> with one option per scope, used
-// by both year pickers (chart scope and the past-launches table). A
-// button-per-year seg fit when the fetch window spanned a decade, but
-// at 40 fetched pages the list runs ~40 years — far wider than a pane
-// head. Same contract as makeScopeSeg: onChange gets the picked value
-// and a single-option control hides itself.
+// Pagination scope control — a segmented control (.seg) with ‹ and › buttons
+// flanking a <select> dropdown, used by both year pickers (chart scope and the
+// past-launches table). Years are sorted newest-first (index 0 is the newest year).
+// Clicking ‹ advances to a newer year (index - 1), clicking › advances to an
+// older year (index + 1). The arrow buttons hide when at the bounds.
+// Reports the choice via onChange; hides itself when scopes.length <= 1.
 function makeScopeSelect(scope, onChange, scopes) {
+  const el = document.createElement('div');
+  el.className = 'seg year-pager';
+
+  const prev = document.createElement('button');
+  prev.className = 'seg-btn';
+  prev.type = 'button';
+  prev.setAttribute('aria-label', 'Newer year');
+  prev.textContent = '‹';
+
   const sel = document.createElement('select');
-  sel.className = 'chart-pick';
+  sel.className = 'pager-select';
   sel.setAttribute('aria-label', 'Year');
   scopes.forEach(v => {
     const o = document.createElement('option');
@@ -48,9 +57,41 @@ function makeScopeSelect(scope, onChange, scopes) {
     sel.append(o);
   });
   sel.value = scope;
-  sel.addEventListener('change', () => onChange(sel.value));
-  sel.hidden = scopes.length <= 1;
-  return sel;
+
+  const next = document.createElement('button');
+  next.className = 'seg-btn';
+  next.type = 'button';
+  next.setAttribute('aria-label', 'Older year');
+  next.textContent = '›';
+
+  const syncButtons = () => {
+    const idx = scopes.indexOf(sel.value);
+    prev.hidden = idx <= 0;
+    next.hidden = idx < 0 || idx >= scopes.length - 1;
+  };
+
+  const pick = v => {
+    sel.value = v;
+    syncButtons();
+    onChange(v);
+  };
+
+  prev.addEventListener('click', () => {
+    const idx = scopes.indexOf(sel.value);
+    if (idx > 0) pick(scopes[idx - 1]);
+  });
+
+  next.addEventListener('click', () => {
+    const idx = scopes.indexOf(sel.value);
+    if (idx >= 0 && idx < scopes.length - 1) pick(scopes[idx + 1]);
+  });
+
+  sel.addEventListener('change', () => pick(sel.value));
+
+  syncButtons();
+  el.append(prev, sel, next);
+  el.hidden = scopes.length <= 1;
+  return el;
 }
 
 // Scopes every chart offers: the fetched years, newest first — JS
