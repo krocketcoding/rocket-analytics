@@ -129,12 +129,13 @@ def paced_pages(page_iter):
 
     The throttle endpoint reports the real remaining budget — keyed or
     anonymous, shared or solo — so we consume it immediately and only
-    sleep when it reports exhaustion. Falls back to the static crawl delay 
-    if the probe fails."""
+    sleep when it reports exhaustion. The budget check runs before each
+    fetch (including the first): pulling a page first would die on a 429
+    whenever the quota was already empty. Falls back to the static crawl
+    delay if the probe fails."""
     remaining = 0
-    for page in page_iter:
-        yield page
-        remaining -= 1
+    pages = iter(page_iter)
+    while True:
         while remaining <= 0:
             try:
                 status = throttle_status()
@@ -148,3 +149,9 @@ def paced_pages(page_iter):
                 wait = max(status.get("next_use_secs") or 0, QUOTA_RETRY_SECS)
                 print(f"API quota exhausted; waiting {wait}s for it to refill...")
                 time.sleep(wait)
+        try:
+            page = next(pages)  # triggers the HTTP request for this page
+        except StopIteration:
+            return
+        yield page
+        remaining -= 1

@@ -116,55 +116,61 @@ def cmd_update_archive(_args):
     def persist():
         written.update(save_archive(entities, store, meta))
 
-    if not meta.get("complete"):
-        # Crawl newest->oldest; resume_net tracks the frontier so a
-        # restart continues instead of repeating finished pages.
-        resume_net = meta.get("resume_net") or oldest_net(store)
-        print("Crawling full launch history...")
-        for page in paced_pages(iter_previous_before(resume_net)):
-            merge_launches(store, entities, page)
-            meta.update(complete=False, resume_net=oldest_net(store), **stats())
-            persist()
-        meta.update(complete=True)
-        meta.pop("resume_net", None)
-        print(f"Crawl complete: {len(store)} launches")
+    try:
+        if not meta.get("complete"):
+            # Crawl newest->oldest; resume_net tracks the frontier so a
+            # restart continues instead of repeating finished pages.
+            resume_net = meta.get("resume_net") or oldest_net(store)
+            print("Crawling full launch history...")
+            for page in paced_pages(iter_previous_before(resume_net)):
+                merge_launches(store, entities, page)
+                meta.update(complete=False, resume_net=oldest_net(store), **stats())
+                persist()
+            meta.update(complete=True)
+            meta.pop("resume_net", None)
+            print(f"Crawl complete: {len(store)} launches")
 
-    if store:
-        # Incremental: only records changed since the archive watermark.
-        since = (datetime.fromisoformat(stats()["max_last_updated"]) - WATERMARK_OVERLAP).isoformat()
-        print(f"Fetching records changed since {since}...")
-        for page in paced_pages(iter_previous_since(since)):
-            merge_launches(store, entities, page)
-            meta.update(**stats())
-            persist()
-            print(f"{len(store)} launches; watermark {meta['max_last_updated']}")
+        if store:
+            # Incremental: only records changed since the archive watermark.
+            since = (datetime.fromisoformat(stats()["max_last_updated"]) - WATERMARK_OVERLAP).isoformat()
+            print(f"Fetching records changed since {since}...")
+            for page in paced_pages(iter_previous_since(since)):
+                merge_launches(store, entities, page)
+                meta.update(**stats())
+                persist()
+                print(f"{len(store)} launches; watermark {meta['max_last_updated']}")
 
-    # Deletion sweep: LL2 never reports removals, so when the API's
-    # count is smaller than ours we diff full id lists — checkpointed in
-    # sweep.json so it can span runs at crawl pacing. The probe runs
-    # AFTER the merges so new records can't masquerade as deletions.
-    sweep = load_sweep()
-    if sweep is not None:
-        api_count = None
-    else:
-        try:
-            api_count = probe_count()
-        except Exception as e:
-            print(f"Count probe failed ({e}); skipping the sweep check")
-    if sweep is not None or (api_count is not None and api_count < len(store)):
-        sweep = sweep or {"started_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                          "resume_net": None, "seen": []}
-        print("API count is below archive count — sweeping for deleted launches...")
-        for page in paced_pages(iter_previous_before(sweep["resume_net"], mode="list")):
-            for rec in page:
-                if rec.get("id") is not None:
-                    sweep["seen"].append(rec["id"])
-                sweep["resume_net"] = rec.get("net") or sweep["resume_net"]
-            save_sweep(sweep)
-            print(f"Sweep progress: {len(sweep['seen'])} ids")
-        removed = prune(store, entities, set(sweep["seen"]), sweep["started_at"])
-        print(f"Sweep complete: pruned {removed} deleted launches")
-        clear_sweep()
+        # Deletion sweep: LL2 never reports removals, so when the API's
+        # count is smaller than ours we diff full id lists — checkpointed in
+        # sweep.json so it can span runs at crawl pacing. The probe runs
+        # AFTER the merges so new records can't masquerade as deletions.
+        sweep = load_sweep()
+        if sweep is not None:
+            api_count = None
+        else:
+            try:
+                api_count = probe_count()
+            except Exception as e:
+                print(f"Count probe failed ({e}); skipping the sweep check")
+        if sweep is not None or (api_count is not None and api_count < len(store)):
+            sweep = sweep or {"started_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                              "resume_net": None, "seen": []}
+            print("API count is below archive count — sweeping for deleted launches...")
+            for page in paced_pages(iter_previous_before(sweep["resume_net"], mode="list")):
+                for rec in page:
+                    if rec.get("id") is not None:
+                        sweep["seen"].append(rec["id"])
+                    sweep["resume_net"] = rec.get("net") or sweep["resume_net"]
+                save_sweep(sweep)
+                print(f"Sweep progress: {len(sweep['seen'])} ids")
+            removed = prune(store, entities, set(sweep["seen"]), sweep["started_at"])
+            print(f"Sweep complete: pruned {removed} deleted launches")
+            clear_sweep()
+    except RuntimeError as e:
+        # get_json gave up — a 429 racing the quota probe, or retries
+        # exhausted. Pages checkpoint into the archive as they land (and
+        # sweeps into sweep.json), so stop cleanly; a rerun resumes here.
+        sys.exit(f"Fetch failed: {e} — progress saved; rerun update-archive to resume")
 
     meta.update(**stats(), generated_at=datetime.now(timezone.utc).isoformat(), complete=True)
     persist()
