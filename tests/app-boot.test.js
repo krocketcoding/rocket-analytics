@@ -323,6 +323,10 @@ test('parseState tolerates malformed input', () => {
 test('LAUNCH_SCOPES lists the past table years newest-first', () => {
   const x = loadApp(makeData());
   assert.deepEqual(norm(x.LAUNCH_SCOPES.past), ['2025', '2024']);
+  // The table shares the charts' all-time pick — 'yall' parses into
+  // its year filter and serializes back.
+  assert.equal(x.parseState('by-rocket|past;yall').views[1].f.year,
+               'all');
 });
 
 test('maximizing a pane disables both axis syncs', () => {

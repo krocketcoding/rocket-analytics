@@ -106,12 +106,14 @@ function rocketRows(pane) {
   });
 }
 
-// Rows for the past-launches table, scoped to the pane's year pick.
-// Keys stay indices into the source list: the row-click modal looks
-// launches up by original index, so filter after indexing.
+// Rows for the past-launches table, scoped to the pane's year pick —
+// the all-time scope (chart-defs.js's ALL_TIME) keeps the whole
+// fetched window. Keys stay indices into the source list: the
+// row-click modal looks launches up by original index, so filter
+// after indexing.
 const scopedLaunches = (list, set, year) =>
   list.map((d, i) => ({rec: d, set, key: i}))
-      .filter(r => r.rec.net?.startsWith(year));
+      .filter(r => year === ALL_TIME || r.rec.net?.startsWith(year));
 
 // The oldest year in the fetched window is partial when the page cap
 // truncated the fetch (meta.truncated — the same year stats.js drops
@@ -144,9 +146,12 @@ const TABLE_SPECS = {
   past: {
     cols: launchCols(true),
     rows: pane => scopedLaunches(DATA.previous, 'past', pane.filters.year),
-    note: (pane, n) => `Showing ${n} launches in ${pane.filters.year}` +
-      (pane.filters.year === PARTIAL_YEAR
-        ? " (partial — older launches weren't fetched)" : ''),
+    note: (pane, n) => pane.filters.year === ALL_TIME
+      ? `Showing all ${n} launches` +
+        (PARTIAL_YEAR ? " (oldest year partial — older launches weren't fetched)" : '')
+      : `Showing ${n} launches in ${pane.filters.year}` +
+        (pane.filters.year === PARTIAL_YEAR
+          ? " (partial — older launches weren't fetched)" : ''),
   },
   rockets: {
     cols: rocketCols,

@@ -16,6 +16,9 @@ const read = f => fs.readFileSync(path.join(DIR, f), 'utf8');
 function loadTables(data) {
   const sandbox = {
     DATA: data,
+    // chart-defs.js's all-time scope value — that file isn't loaded
+    // here (it needs the chart factories), so the test supplies it.
+    ALL_TIME: 'all',
     esc: s => String(s),
     fmtLocal: s => s ? new Date(s)
       .toLocaleString(undefined, {dateStyle: 'medium', timeStyle: 'short'})
@@ -59,6 +62,16 @@ test('past note flags the truncated oldest year', () => {
   assert.match(y23, /partial/);
   const y24 = x.TABLE_SPECS.past.note(pane('past', {year: '2024'}), 4);
   assert.equal(y24, 'Showing 4 launches in 2024');
+  // All time covers the partial year too, so it keeps the caveat.
+  const all = x.TABLE_SPECS.past.note(pane('past', {year: 'all'}), 7);
+  assert.equal(all, "Showing all 7 launches (oldest year partial —" +
+                    " older launches weren't fetched)");
+});
+
+test('past all-time note has no caveat without truncation', () => {
+  const x = loadTables(makeData());
+  assert.equal(x.TABLE_SPECS.past.note(pane('past', {year: 'all'}), 6),
+               'Showing all 6 launches');
 });
 
 test('scopedLaunches keeps only the picked year', () => {
@@ -66,6 +79,9 @@ test('scopedLaunches keeps only the picked year', () => {
   const rows = x.scopedLaunches(makeData().previous, 'past', '2024');
   assert.equal(rows.length, 4);
   assert.ok(rows.every(r => r.rec.net.startsWith('2024')));
+  // The all-time scope keeps every launch in the window.
+  assert.equal(
+    x.scopedLaunches(makeData().previous, 'past', 'all').length, 6);
 });
 
 test('rocketRows default order: launches, LEO capacity, then name', () => {

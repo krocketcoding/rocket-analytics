@@ -63,13 +63,16 @@ const netYears = list =>
 const LAUNCH_SCOPES = {past: netYears(DATA.previous).reverse()};
 
 // The 'launchYear' filter: the same drop-down as the chart year
-// picker, but scoped to the table's own launches. A stale scope — a
-// year the table doesn't contain — resets to the newest. Changing it
-// rebuilds the rows like a table sort does, so the search filter
-// re-runs over the new list.
+// picker — all-time pick included — but scoped to the table's own
+// launches. A stale scope — a year the table doesn't contain — resets
+// to the newest; all time is always valid. Changing it rebuilds the
+// rows like a table sort does, so the search filter re-runs over the
+// new list.
 FILTER_BUILDERS.launchYear = (pane, onChange) => {
   const scopes = LAUNCH_SCOPES[pane.defId];
-  const year = scopes.includes(pane.filters.year) ? pane.filters.year : scopes[0];
+  const year = pane.filters.year === ALL_TIME
+      || scopes.includes(pane.filters.year)
+    ? pane.filters.year : scopes[0];
   if (year !== pane.filters.year) {
     pane.filters.year = year;
     refreshTable(pane);
@@ -78,7 +81,7 @@ FILTER_BUILDERS.launchYear = (pane, onChange) => {
     pane.filters.year = v;
     refreshTable(pane);
     onChange();
-  }, scopes);
+  }, scopes, [[ALL_TIME, 'All time']]);
 };
 
 // The 'activeOnly' filter: an "Active only" checkbox on the rockets
@@ -103,11 +106,14 @@ FILTER_BUILDERS.activeOnly = (pane, onChange) => {
 
 // Table filter state: the search text, the optional-column pick, plus
 // the year scope for tables that offer one — seeded from a carried-over
-// chart year when the table has it, else the newest.
+// chart year (all time included) when the table has it, else the
+// newest.
 const freshTableFilters = (defId, year) => {
   const scopes = LAUNCH_SCOPES[defId];
   return {q: '', cols: new Set(), ...(scopes
-    ? {year: scopes.includes(year) ? year : scopes[0]} : {})};
+    ? {year: year === ALL_TIME || scopes.includes(year)
+        ? year : scopes[0]}
+    : {})};
 };
 
 // The 'cols' filter: a checkbox popover over the table spec's `opt`
@@ -488,7 +494,7 @@ function exportCsv(pane) {
 // just #by-rocket|upcoming. Multi-value filters are comma lists of
 // percent-encoded names, which keeps ; | @ ^ and , safe as separators.
 // Token keys — y: year scope (charts and the past-launches table;
-// 'yall' is the charts' all-time pick — tables only get real years);
+// 'yall' is the all-time pick they share);
 // c: country codes (! = exclude); e: entity picks; r: rocket picks;
 // so/cm/vs/oc: successes-only/cumulative/variant/orbit-capable toggles;
 // ps: bar-chart rows per page; q: table search; k: optional columns;
