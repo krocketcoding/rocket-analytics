@@ -22,8 +22,7 @@ const launchCols = withStatus => [
    html: d => {
      const t = new Date(d.net);
      return isNaN(t) ? esc(d.net || '')
-       : esc(t.toLocaleDateString(undefined, {dateStyle: 'medium'})) + '<br>'
-       + esc(t.toLocaleTimeString(undefined, {timeStyle: 'short'}));
+       : esc(DATE_FMT.format(t)) + '<br>' + esc(TIME_FMT.format(t));
    }},
   {head: 'Mission', text: d => d.name || ''},
   {hide: 'provider', head: 'Provider',
@@ -129,9 +128,7 @@ const PARTIAL_YEAR = DATA.meta.truncated
 // once: date-only, since a note doesn't need the time.
 const FIRST_LAUNCH_DATE = (() => {
   const net = DATA.previous.at(-1)?.net;
-  return net
-    ? new Date(net).toLocaleDateString(undefined, {dateStyle: 'medium'})
-    : null;
+  return net ? DATE_FMT.format(new Date(net)) : null;
 })();
 
 // Each spec produces {rec, set, key} rows: set/key become the

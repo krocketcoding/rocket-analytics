@@ -22,8 +22,19 @@ const imgSrc = i => DATA.images[i] ?? null;
 // Formatting and markup helpers
 const esc = s => String(s).replace(/[&<>"']/g,
   c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
-const fmtLocal = s => s ? new Date(s)
-  .toLocaleString(undefined, {dateStyle: 'medium', timeStyle: 'short'}) : null;
+// Shared Intl formatters — a toLocale* call builds a fresh formatter
+// internally, which is ~15x slower when a table renders thousands of
+// date cells at once (the all-time past-launches view). Intl.format
+// throws on invalid dates where toLocale* returned "Invalid Date", so
+// callers that can't trust the string keep an isNaN guard.
+const DATE_FMT = new Intl.DateTimeFormat(undefined, {dateStyle: 'medium'});
+const TIME_FMT = new Intl.DateTimeFormat(undefined, {timeStyle: 'short'});
+const DATE_TIME_FMT = new Intl.DateTimeFormat(undefined,
+  {dateStyle: 'medium', timeStyle: 'short'});
+const fmtLocal = s => {
+  const t = s ? new Date(s) : null;
+  return t && !isNaN(t) ? DATE_TIME_FMT.format(t) : null;
+};
 const num = (v, unit) => v != null ? Number(v).toLocaleString() + (unit ? ' ' + unit : '') : null;
 const yesNo = v => v == null ? null : (v ? 'Yes' : 'No');
 // Only http(s) URLs become links — anything else (javascript:, data:)

@@ -16,9 +16,12 @@ const read = f => fs.readFileSync(path.join(DIR, f), 'utf8');
 function loadTables(data) {
   const sandbox = {
     DATA: data,
-    // chart-defs.js's all-time scope value — that file isn't loaded
-    // here (it needs the chart factories), so the test supplies it.
+    // chart-defs.js's all-time scope value and app.js's shared date
+    // formatters — neither file is loaded here (they need the chart
+    // factories), so the test supplies them.
     ALL_TIME: 'all',
+    DATE_FMT: new Intl.DateTimeFormat(undefined, {dateStyle: 'medium'}),
+    TIME_FMT: new Intl.DateTimeFormat(undefined, {timeStyle: 'short'}),
     esc: s => String(s),
     fmtLocal: s => s ? new Date(s)
       .toLocaleString(undefined, {dateStyle: 'medium', timeStyle: 'short'})
