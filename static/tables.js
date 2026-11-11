@@ -176,9 +176,14 @@ function renderTable(pane) {
       const dir = c.sort && c.sort === sortKey ? ` data-dir="${sortDir}"` : '';
       return `<th${sortable}${dir}>${c.headHtml || esc(c.head)}</th>`;
     }).join('')}</tr></thead><tbody>${rows.map(r => {
+      // Provider country for launches, manufacturer country for rockets
+      // (comma-separated if multi-country).
+      const country = r.set === 'rockets'
+        ? DATA.agencies[r.rec.manufacturer_id]?.country || ''
+        : DATA.agencies[r.rec.provider_id]?.country || '';
       const attrs = r.set === 'rockets'
-        ? `data-set="rockets" data-id="${esc(String(r.key))}" tabindex="0"`
-        : `data-set="${r.set}" data-idx="${r.key}" tabindex="0"`;
+        ? `data-set="rockets" data-id="${esc(String(r.key))}" data-country="${esc(country)}" tabindex="0"`
+        : `data-set="${r.set}" data-idx="${r.key}" data-country="${esc(country)}" tabindex="0"`;
       return `<tr ${attrs}>${cols.map(c =>
         `<td${c.net ? ` data-net="${esc(r.rec.net || '')}"` : ''}>${c.html ? c.html(r.rec) : esc(c.text(r.rec))}</td>`
       ).join('')}</tr>`;

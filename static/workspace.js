@@ -26,12 +26,51 @@ const DEFAULT_VIEWS = ['by-rocket', 'upcoming'];
 const KIND_TAGS = {Bars: 'Bar', Donuts: 'Donut', Trends: 'Trend',
                    Tables: 'Table'};
 
-// The 'q' filter: a search box plus live match count for table panes.
-// The apply routine is stored on the pane so mountPane can re-run it
-// after relocating a table or restoring a saved query.
+// Distinct provider country alpha-3 codes for launches, manufacturer
+// country alpha-3 codes for rockets.
+const tableCountryCodes = defId => {
+  const codes = new Set();
+  const add = str => {
+    if (!str) return;
+    str.split(',').forEach(c => {
+      const code = c.trim();
+      if (code && code !== '???') codes.add(code);
+    });
+  };
+  if (defId === 'rockets') {
+    Object.values(DATA.rockets).forEach(r =>
+      add(DATA.agencies[r.manufacturer_id]?.country));
+  } else {
+    const list = defId === 'upcoming' ? DATA.upcoming : DATA.previous;
+    list.forEach(l => add(DATA.agencies[l.provider_id]?.country));
+  }
+  return [...codes].sort();
+};
+
+// The 'q' filter: country dropdown + search box plus live match count
+// for table panes. The apply routine is stored on the pane so mountPane
+// can re-run it after relocating a table or restoring a saved query.
 FILTER_BUILDERS.q = (pane, onChange) => {
   const wrap = document.createElement('div');
   wrap.className = 'pane-filter';
+
+  const select = document.createElement('select');
+  select.className = 'pane-country-select';
+  select.setAttribute('aria-label', 'Filter by country');
+  const allOpt = document.createElement('option');
+  allOpt.value = '';
+  allOpt.textContent = 'All';
+  select.append(allOpt);
+
+  const codes = tableCountryCodes(pane.defId);
+  codes.forEach(code => {
+    const opt = document.createElement('option');
+    opt.value = code;
+    opt.textContent = code;
+    select.append(opt);
+  });
+  select.value = pane.filters.countryCode || '';
+
   const input = document.createElement('input');
   input.type = 'search';
   input.placeholder = 'Filter…';
@@ -41,17 +80,25 @@ FILTER_BUILDERS.q = (pane, onChange) => {
   const hint = document.createElement('span');
   hint.className = 'pane-hint';
   hint.textContent = 'Select a row for details';
+
   pane.applyFilter = () => {
     pane.filters.q = input.value;
+    pane.filters.countryCode = select.value;
     const q = input.value.trim().toLowerCase();
+    const c = select.value;
     const rows = [...pane.body.querySelectorAll('tbody tr')];
     rows.forEach(tr => {
-      tr.hidden = q !== '' && !tr.textContent.toLowerCase().includes(q);
+      const rowCountry = tr.dataset.country || '';
+      const countryMatches = !c || rowCountry.split(',').map(s => s.trim()).includes(c);
+      const textMatches = q === '' || tr.textContent.toLowerCase().includes(q);
+      tr.hidden = !countryMatches || !textMatches;
     });
-    count.textContent = q ? `${rows.filter(tr => !tr.hidden).length} matches` : '';
+    count.textContent = (q || c) ? `${rows.filter(tr => !tr.hidden).length} matches` : '';
   };
+
+  select.addEventListener('change', () => { pane.applyFilter(); onChange(); });
   input.addEventListener('input', () => { pane.applyFilter(); onChange(); });
-  wrap.append(input, count, hint);
+  wrap.append(select, input, count, hint);
   return wrap;
 };
 
@@ -104,13 +151,13 @@ FILTER_BUILDERS.activeOnly = (pane, onChange) => {
   return label;
 };
 
-// Table filter state: the search text, the optional-column pick, plus
-// the year scope for tables that offer one — seeded from a carried-over
-// chart year (all time included) when the table has it, else the
-// newest.
+// Table filter state: the search text, the country code pick, the
+// optional-column pick, plus the year scope for tables that offer one
+// — seeded from a carried-over chart year (all time included) when the
+// table has it, else the newest.
 const freshTableFilters = (defId, year) => {
   const scopes = LAUNCH_SCOPES[defId];
-  return {q: '', cols: new Set(), ...(scopes
+  return {q: '', countryCode: '', cols: new Set(), ...(scopes
     ? {year: year === ALL_TIME || scopes.includes(year)
         ? year : scopes[0]}
     : {})};
@@ -495,7 +542,8 @@ function exportCsv(pane) {
 // percent-encoded names, which keeps ; | @ ^ and , safe as separators.
 // Token keys — y: year scope (charts and the past-launches table;
 // 'yall' is the all-time pick they share);
-// c: country codes (! = exclude); e: entity picks; r: rocket picks;
+// c: country codes (! = exclude for charts, cc for tables);
+// e: entity picks; r: rocket picks;
 // so/cm/vs/oc: successes-only/cumulative/variant/orbit-capable toggles;
 // ps: bar-chart rows per page; q: table search; k: optional columns;
 // t: rockets sort as <key>.<dir>; ao: rockets active-only toggle. The
@@ -525,6 +573,7 @@ const paneTokens = p => {
     if (f.rockets?.size) t.push('r' + encList(f.rockets));
     if (f.pageSize && f.pageSize !== PAGE_SIZE) t.push('ps' + f.pageSize);
   } else {
+    if (f.countryCode) t.push('cc' + encodeURIComponent(f.countryCode));
     if (f.q) t.push('q' + encodeURIComponent(f.q));
     // The past table carries a year scope too — a non-default pick
     // (default: newest year) serializes like the chart year.
@@ -578,6 +627,7 @@ function parseState(str) {
       else if (t === 'oc') f.orbitCapable = true;
       else if (t === 'ao') f.activeOnly = true;
       else if (/^y(?:\d{4}|all)$/.test(t)) f.year = t.slice(1);
+      else if (/^cc/.test(t)) f.countryCode = decodeURIComponent(t.slice(2));
       else if (/^c/.test(t)) {
         const neg = t[1] === '!';
         f.country = {codes: new Set(decList(t.slice(neg ? 2 : 1))),

@@ -454,6 +454,21 @@ main {
   gap: 0.6rem;
 }
 
+.pane-filter select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0.4rem 0.6rem;
+}
+
+.pane-filter select:focus {
+  border-color: var(--accent-strong);
+  outline: none;
+}
+
 .pane-filter input {
   background: var(--bg);
   border: 1px solid var(--border);

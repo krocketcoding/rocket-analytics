@@ -102,7 +102,7 @@ this.__x = {
   parseState, serialize, applyState, setFocus, loadState, defaultState,
   makeScopeSelect,
   esc, fmtDuration, isWebUrl, imgSrc, num, yesNo,
-  DATA, STATS, CHART_DEFS, VIEW_DEFS, LAUNCH_SCOPES, freshFilters,
+  DATA, STATS, CHART_DEFS, VIEW_DEFS, LAUNCH_SCOPES, freshFilters, FILTER_BUILDERS,
 };`, sandbox);
   return sandbox.__x;
 }
@@ -278,6 +278,68 @@ test('parseState round-trips a full filter token set', () => {
   assert.equal(s.views[1].f.q, 'falcon');
   assert.equal(s.ratio, 0.6);
   assert.equal(s.focus, 1);
+});
+
+test('the country pick on tables serializes and parses back', () => {
+  const x = loadApp(makeData());
+  x.panes[1].filters.countryCode = 'USA';
+  assert.equal(x.serialize(), 'by-rocket|upcoming;ccUSA');
+  const s = x.parseState('by-rocket|upcoming;ccUSA');
+  assert.equal(s.views[1].f.countryCode, 'USA');
+});
+
+test('table country filtering matches multi-country providers and combines with q search', () => {
+  const data = makeData();
+  data.agencies[12] = {name: 'MultiAgency', country: 'FRA,RUS'};
+  data.upcoming.push(
+    launch({name: 'Arianespace Mission', provider_id: 12}),
+    launch({name: 'Other Mission', provider_id: 10})
+  );
+  const x = loadApp(data);
+  const p = x.panes[1];
+  p.defId = 'upcoming';
+
+  const rows = [
+    {dataset: {country: 'USA'}, textContent: 'Future Mission SpaceX', hidden: false},
+    {dataset: {country: 'FRA,RUS'}, textContent: 'Arianespace Mission Multi', hidden: false},
+    {dataset: {country: 'USA'}, textContent: 'Other Mission SpaceX', hidden: false},
+  ];
+  p.body = {querySelectorAll: () => rows};
+
+  // Build the filter builder widget
+  const wrap = x.FILTER_BUILDERS.q(p, () => {});
+  const select = wrap.children[0];
+  const input = wrap.children[1];
+  const count = wrap.children[2];
+
+  // Country filter by FRA (part of multi-country FRA,RUS)
+  select.value = 'FRA';
+  p.applyFilter();
+  assert.equal(rows[0].hidden, true);
+  assert.equal(rows[1].hidden, false);
+  assert.equal(rows[2].hidden, true);
+  assert.equal(count.textContent, '1 matches');
+
+  // Combined country and text search
+  select.value = 'FRA';
+  input.value = 'Mission';
+  p.applyFilter();
+  assert.equal(rows[1].hidden, false);
+  assert.equal(count.textContent, '1 matches');
+
+  input.value = 'Nonexistent';
+  p.applyFilter();
+  assert.equal(rows[1].hidden, true);
+  assert.equal(count.textContent, '0 matches');
+
+  // Reset country to All
+  select.value = '';
+  input.value = 'SpaceX';
+  p.applyFilter();
+  assert.equal(rows[0].hidden, false);
+  assert.equal(rows[1].hidden, true);
+  assert.equal(rows[2].hidden, false);
+  assert.equal(count.textContent, '2 matches');
 });
 
 test('the column pick serializes and parses back', () => {
