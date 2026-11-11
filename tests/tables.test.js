@@ -164,3 +164,34 @@ test('rocketRows sorts by optional numeric and date keys', () => {
   // Records missing the key sort last in either direction.
   assert.equal(byMaiden.at(-1).rec.maiden_flight, undefined);
 });
+
+test('renderTable includes data-country on table rows', () => {
+  const data = makeData();
+  data.agencies[12] = {name: 'MultiAgency', country: 'FRA,RUS'};
+  data.previous.push(launch({name: 'Multi', provider_id: 12}));
+  const elements = [];
+  const sandbox = {
+    DATA: data,
+    ALL_TIME: 'all',
+    DATE_FMT: new Intl.DateTimeFormat(undefined, {dateStyle: 'medium'}),
+    TIME_FMT: new Intl.DateTimeFormat(undefined, {timeStyle: 'short'}),
+    esc: s => String(s),
+    fmtLocal: s => s,
+    num: (v, u) => v,
+    yesNo: v => v,
+    document: {
+      createElement: tag => {
+        const el = {tag, querySelectorAll: () => []};
+        elements.push(el);
+        return el;
+      },
+    },
+    saveState() {},
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(['stats.js', 'tables.js'].map(read).join('\n') +
+    '\nthis.__x = {renderTable};', sandbox);
+  const wrap = sandbox.__x.renderTable(pane('past', {year: 'all'}));
+  assert.match(wrap.innerHTML, /data-country="USA"/);
+  assert.match(wrap.innerHTML, /data-country="FRA,RUS"/);
+});
