@@ -111,7 +111,27 @@ test('topCat orders by descending total, ties by name code point', () => {
 test('countryName expands codes, comma lists, and the ??? placeholder', () => {
   assert.equal(countryName('USA'), 'United States');
   assert.equal(countryName('AUS,SGP'), 'Australia, Singapore');
+  assert.equal(countryName('CAN'), 'Canada');
   assert.equal(countryName('???'), 'Unknown');
+  // Unlisted codes show as themselves — a country the table hasn't
+  // caught up with stays identifiable rather than reading 'Unknown'.
+  assert.equal(countryName('ZZZ'), 'ZZZ');
+});
+
+test('countryNames covers agency countries absent from the tallies', () => {
+  // Provider-side countries (launch services like Sea Launch) never
+  // chart as manufacturers, but the launch tables' picker still
+  // offers them — the names map must cover them or the option falls
+  // back to the raw code.
+  const data = makeData();
+  data.agencies[50] = {name: 'Sea Launch', country: '???'};
+  data.agencies[51] = {name: 'Arianespace',
+    country: 'FRA,ITA,DEU,ESP,CHE,GBR,AUT,SWE,TUR,BEL,PRT,NLD,HUN,POL,BGR,SVK,DNK,CZE,ROU,NOR,HRV,FIN,GRC,EST,IRL,ISL,LVA,LTU,LUX,SVN'};
+  const {STATS: s} = loadStats(data);
+  assert.equal(s.countryNames['???'], 'Unknown');
+  assert.match(s.countryNames[
+    'FRA,ITA,DEU,ESP,CHE,GBR,AUT,SWE,TUR,BEL,PRT,NLD,HUN,POL,BGR,SVK,DNK,CZE,ROU,NOR,HRV,FIN,GRC,EST,IRL,ISL,LVA,LTU,LUX,SVN'],
+    /Turkey/);
 });
 
 test('an empty launch list yields empty yearly buckets', () => {

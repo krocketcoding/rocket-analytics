@@ -254,7 +254,11 @@ function makeCountryFilter(sel, onChange, map) {
     options: codes.map(code => [code, STATS.countryNames[code] || code]),
     sel: sel.codes,
     summary: () => {
-      const picked = [...sel.codes].sort();
+      // Show names, not raw codes — '???' and alpha-3 strings are
+      // meaningless on the button (and compounds like 'FRA,RUS' read
+      // better expanded).
+      const picked = [...sel.codes].sort()
+        .map(c => STATS.countryNames[c] || c);
       const n = picked.length;
       const text = !n ? 'Country: all'
         : n <= 3 ? `Country: ${sel.negate ? 'not ' : ''}${picked.join(', ')}`

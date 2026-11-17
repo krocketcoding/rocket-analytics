@@ -21,15 +21,28 @@ const COUNTRY_NAMES = {
   SVN: 'Slovenia', UKR: 'Ukraine', AUS: 'Australia', NZL: 'New Zealand',
   SGP: 'Singapore', KAZ: 'Kazakhstan', BRA: 'Brazil',
   GUF: 'French Guiana', OMN: 'Oman',
+  // Codes that only appear on the provider side or inside ESA's
+  // compound consortium strings — missing entries here collapse to
+  // 'Unknown', which made distinct countries look duplicated.
+  CAN: 'Canada', IDN: 'Indonesia', TWN: 'Taiwan',
+  MHL: 'Marshall Islands', TUR: 'Turkey', BGR: 'Bulgaria',
+  SVK: 'Slovakia', HRV: 'Croatia', ISL: 'Iceland',
+  LVA: 'Latvia', LTU: 'Lithuania',
 };
 
 // Expand a country code to a name for the chart tooltip.
 // A few agencies report comma-separated member states ('AUS,SGP'), so
-// each part resolves individually; unlisted codes — and the API's own
-// '???' placeholder — read 'Unknown'.
+// each part resolves individually. Unlisted codes show as themselves:
+// the table only needs pretty names for countries we've seen, and a
+// new country's alpha-3 stays identifiable instead of collapsing
+// into 'Unknown' — which is reserved for the API's own '???'
+// placeholder (never-launched vehicles like "Unknown Launch
+// Vehicle").
 const countryName = code =>
-  code.split(',').map(part => COUNTRY_NAMES[part.trim()] || 'Unknown')
-    .join(', ');
+  code.split(',').map(part => {
+    const p = part.trim();
+    return COUNTRY_NAMES[p] || (p === '???' ? 'Unknown' : p);
+  }).join(', ');
 
 // Stacked-chart categories: failures are their own segment, and the rest
 // split by whether the mission targeted orbit — 'Sub' is the only
@@ -141,12 +154,13 @@ function computeStats(data) {
   let years = Object.keys(perYear).sort().reverse();
   if (data.meta.truncated) years = years.slice(0, -1);
 
-  // Tooltip names for every code the chart can show, resolved once here
-  // so the axis labels can stay as the short codes. Covers every code
-  // counted in the per-year tallies — including the dropped oldest
-  // year, whose codes may still appear as filter options.
+  // Names for every country code a picker or chart can show. The
+  // pickers offer provider countries too — a wider set than the
+  // tallies (launch-service providers like Sea Launch carry '???',
+  // which never charts as a manufacturer) — so the names map covers
+  // every agency country, not just the tally keys.
   const countryCodes = new Set(
-    Object.values(perYear).flatMap(y => Object.keys(y[2])));
+    Object.values(data.agencies).map(a => a.country).filter(Boolean));
 
   const yearly = {};
   for (const year of years) {
