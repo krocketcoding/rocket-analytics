@@ -283,13 +283,16 @@ test('parseState round-trips a full filter token set', () => {
 
 test('the country pick on tables serializes and parses back', () => {
   const x = loadApp(makeData());
-  x.panes[1].filters.countryCode = 'USA';
-  assert.equal(x.serialize(), 'by-rocket|upcoming;ccUSA');
-  const s = x.parseState('by-rocket|upcoming;ccUSA');
-  assert.equal(s.views[1].f.countryCode, 'USA');
+  x.panes[1].filters.country.codes.add('USA');
+  assert.equal(x.serialize(), 'by-rocket|upcoming;cUSA');
+  const s = x.parseState('by-rocket|upcoming;cUSA');
+  assert.deepEqual(norm([...s.views[1].f.country.codes]), ['USA']);
+  // The legacy single-country 'cc' token migrates into the pick.
+  const m = x.parseState('by-rocket|upcoming;ccUSA');
+  assert.deepEqual(norm([...m.views[1].f.country.codes]), ['USA']);
 });
 
-test('table country filtering matches multi-country providers and combines with q search', () => {
+test('table country filtering matches whole country strings and combines with q search', () => {
   const data = makeData();
   data.agencies[12] = {name: 'MultiAgency', country: 'FRA,RUS'};
   data.upcoming.push(
@@ -307,22 +310,41 @@ test('table country filtering matches multi-country providers and combines with 
   ];
   p.body = {querySelectorAll: () => rows};
 
-  // Build the filter builder widget
+  // Build the filter builder widget — the chart-style country pick is
+  // children[0]; mutate the pane's {codes, negate} selection directly.
   const wrap = x.FILTER_BUILDERS.q(p, () => {});
-  const select = wrap.children[0];
   const input = wrap.children[1];
   const count = wrap.children[2];
+  const codes = p.filters.country.codes;
 
-  // Country filter by FRA (part of multi-country FRA,RUS)
-  select.value = 'FRA';
+  // Whole-string match like the charts: 'FRA,RUS' is one option —
+  // picking it shows only the compound row.
+  codes.add('FRA,RUS');
   p.applyFilter();
   assert.equal(rows[0].hidden, true);
   assert.equal(rows[1].hidden, false);
   assert.equal(rows[2].hidden, true);
   assert.equal(count.textContent, '1 matches');
 
+  // 'FRA' alone doesn't match the compound row.
+  codes.clear();
+  codes.add('FRA');
+  p.applyFilter();
+  assert.equal(rows[1].hidden, true);
+  assert.equal(count.textContent, '0 matches');
+
+  // Exclude inverts the match.
+  codes.clear();
+  codes.add('FRA,RUS');
+  p.filters.country.negate = true;
+  p.applyFilter();
+  assert.equal(rows[0].hidden, false);
+  assert.equal(rows[1].hidden, true);
+  assert.equal(rows[2].hidden, false);
+  assert.equal(count.textContent, '2 matches');
+  p.filters.country.negate = false;
+
   // Combined country and text search
-  select.value = 'FRA';
   input.value = 'Mission';
   p.applyFilter();
   assert.equal(rows[1].hidden, false);
@@ -333,8 +355,8 @@ test('table country filtering matches multi-country providers and combines with 
   assert.equal(rows[1].hidden, true);
   assert.equal(count.textContent, '0 matches');
 
-  // Reset country to All
-  select.value = '';
+  // Reset country to all picks
+  codes.clear();
   input.value = 'SpaceX';
   p.applyFilter();
   assert.equal(rows[0].hidden, false);
@@ -347,7 +369,7 @@ test('the rockets table filters rows with the chart-style country pick', () => {
   const x = loadApp(makeData());
   const p = x.panes[1];
   p.defId = 'rockets';
-  p.filters = {q: '', countryCode: '', cols: new Set(),
+  p.filters = {q: '', cols: new Set(),
                country: {codes: new Set(), negate: false}};
   const rows = [
     {dataset: {country: 'USA'}, textContent: 'Falcon 9', hidden: false},
