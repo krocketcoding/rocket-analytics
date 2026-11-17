@@ -127,6 +127,17 @@ const siteNested = (rows, sel) => Object.fromEntries(
 // mode — the variantStack=false branch does exactly this aggregation.
 const siteRows = (rows, sel) => familyRows(siteNested(rows, sel), false);
 
+// Country-filter a nested {group: {rocket: cats}} bucket by the
+// INNER rocket's country — families group rockets, so the pick
+// applies per rocket before aggregation (the same unit the flat
+// country filter uses). Groups left empty drop out like siteNested.
+const countryNested = (rows, sel) => Object.fromEntries(
+  Object.entries(rows).map(([g, perRocket]) => [g, Object.fromEntries(
+    Object.entries(perRocket).filter(([name]) =>
+      !sel?.codes.size
+      || sel.codes.has(ROCKET_COUNTRIES[name]) !== sel.negate))])
+    .filter(([, perRocket]) => Object.keys(perRocket).length));
+
 // {mfr: {rocket: cats}} — re-slices the flat rockets rows through the
 // rocket->manufacturer map into the nested shape familyRows reads, so
 // the manufacturer chart gets the same category/variant stack swap
@@ -246,8 +257,13 @@ const CHART_DEFS = {
     filters: ['active'],
     data: s => applyActiveFilter(GROUPS.rocket.rows(s), s.activeOnly),
   }),
+  // The country pick subsets the family's inner rockets — a family
+  // has no country of its own. No countryMap is passed: the picker
+  // defaults to ROCKET_COUNTRIES and the filtering already happened
+  // per rocket, so variantBarDef's outer applyCountryFilter stays off.
   'by-rocket-family': variantBarDef('Rocket family',
-    s => yearRows('families', s.year)),
+    s => countryNested(yearRows('families', s.year), s.country),
+    {filters: ['country']}),
   // Manufacturer bars regroup the flat rockets bucket into
   // {mfr: {rocket: cats}} via the stats map — no nested yearly bucket
   // needed.

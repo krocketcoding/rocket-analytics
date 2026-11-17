@@ -154,6 +154,27 @@ test('family chart stacks categories or per-variant segments', () => {
   assert.deepEqual(norm(variants['Falcon']), {'Falcon 9': 2});
 });
 
+test('family chart country filter subsets the inner rockets', () => {
+  const def = x.CHART_DEFS['by-rocket-family'];
+  const keys = s => Object.keys(def.data(s)).sort();
+  // 2024 families: Falcon{Falcon 9}, Heritage{OldOrb}, plus the
+  // family-less Sounder (FRA) and NoMfr (no resolvable manufacturer).
+  assert.deepEqual(norm(keys(fs_('2024'))),
+                   ['Falcon', 'Heritage', 'NoMfr', 'Sounder']);
+  // USA keeps the two US rockets' families; FRA leaves only Sounder;
+  // excluding USA keeps everything that isn't confirmed US — the
+  // unmapped NoMfr included, matching applyCountryFilter's semantics.
+  assert.deepEqual(norm(keys(fs_('2024',
+    {country: {codes: new Set(['USA']), negate: false}}))),
+                   ['Falcon', 'Heritage']);
+  assert.deepEqual(norm(keys(fs_('2024',
+    {country: {codes: new Set(['FRA']), negate: false}}))),
+                   ['Sounder']);
+  assert.deepEqual(norm(keys(fs_('2024',
+    {country: {codes: new Set(['USA']), negate: true}}))),
+                   ['NoMfr', 'Sounder']);
+});
+
 test('manufacturer bars regroup flat rocket rows via the rocket map', () => {
   const def = x.CHART_DEFS['by-manufacturer'];
   const cats = def.data(fs_('2024'));
