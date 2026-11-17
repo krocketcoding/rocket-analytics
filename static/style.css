@@ -826,8 +826,10 @@ tbody tr[data-set]:focus-visible {
   gap: 0.3rem;
   left: 0;
   /* The 75vh cap keeps the long pickers (rockets run 100+) inside
-     short landscape windows. */
+     short landscape windows. The width cap keeps long option names
+     from widening the popover — .pick-row-label ellipsizes. */
   max-height: min(480px, 75vh);
+  max-width: min(22rem, 80vw);
   min-width: 210px;
   overflow-y: auto;
   padding: 0.6rem 0.75rem;
@@ -888,6 +890,17 @@ tbody tr[data-set]:focus-visible {
   display: flex;
   gap: 0.45rem;
   white-space: nowrap;
+}
+
+/* Long option names (rocket configs, compound country strings)
+   ellipsize instead of widening the popover; the span's title carries
+   the full text. min-width:0 lets the flex item shrink below its
+   content size so the ellipsis can engage. */
+.pick-row-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* display:flex above would defeat the hidden attribute the popover
@@ -1210,11 +1223,6 @@ tbody tr[data-set]:focus-visible {
 
   /* (Donut stacking is handled by .pane.narrow — real pane width, not
      the viewport breakpoint.) */
-
-  /* Picker popovers stay inside the viewport */
-  .pick-pop {
-    max-width: 80vw;
-  }
 
   /* Roomier touch targets on the picker rows */
   .pick-row {

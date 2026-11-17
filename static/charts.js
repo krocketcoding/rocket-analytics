@@ -182,7 +182,14 @@ function makeCheckPopover(opts) {
       set(v, cb.checked);
       emit();
     });
-    row.append(cb, name);
+    // The name sits in a span so CSS can ellipsize it — a bare text
+    // node can't take text-overflow inside the flex row. The title
+    // keeps the full label reachable on hover.
+    const label = document.createElement('span');
+    label.className = 'pick-row-label';
+    label.textContent = name;
+    label.title = name;
+    row.append(cb, label);
     pop.append(row);
     cbs.push([v, cb]);
   }
