@@ -26,8 +26,9 @@ const DEFAULT_VIEWS = ['by-rocket', 'upcoming'];
 const KIND_TAGS = {Bars: 'Bar', Donuts: 'Donut', Trends: 'Trend',
                    Tables: 'Table'};
 
-// Distinct provider country alpha-3 codes for launches, manufacturer
-// country alpha-3 codes for rockets.
+// Distinct provider country alpha-3 codes for the launch tables'
+// single-country drop-down — the rockets table uses the chart-style
+// picker instead (ROCKET_TABLE_COUNTRIES below).
 const tableCountryCodes = defId => {
   const codes = new Set();
   const add = str => {
@@ -37,39 +38,32 @@ const tableCountryCodes = defId => {
       if (code && code !== '???') codes.add(code);
     });
   };
-  if (defId === 'rockets') {
-    Object.values(DATA.rockets).forEach(r =>
-      add(DATA.agencies[r.manufacturer_id]?.country));
-  } else {
-    const list = defId === 'upcoming' ? DATA.upcoming : DATA.previous;
-    list.forEach(l => add(DATA.agencies[l.provider_id]?.country));
-  }
+  const list = defId === 'upcoming' ? DATA.upcoming : DATA.previous;
+  list.forEach(l => add(DATA.agencies[l.provider_id]?.country));
   return [...codes].sort();
 };
 
-// The 'q' filter: country dropdown + search box plus live match count
-// for table panes. The apply routine is stored on the pane so mountPane
-// can re-run it after relocating a table or restoring a saved query.
+// Rocket name -> manufacturer country string, the same label->code
+// shape the rocket charts' country picker reads (chart-defs.js's
+// ROCKET_COUNTRIES / STATS.rocketCountries) — but built from DATA so
+// rockets that never charted still offer their country. Compound
+// codes ('FRA,RUS') stay whole: the picker treats each distinct
+// string as one option and rows match it exactly, like the chart.
+const ROCKET_TABLE_COUNTRIES = Object.fromEntries(
+  Object.values(DATA.rockets)
+    .filter(r => r.name)
+    .map(r => [r.name, DATA.agencies[r.manufacturer_id]?.country])
+    .filter(([, c]) => c));
+
+// The 'q' filter: country pick + search box plus live match count for
+// table panes. The apply routine is stored on the pane so mountPane can
+// re-run it after relocating a table or restoring a saved query. The
+// country control differs per table: the rockets table reuses the
+// rocket chart's checkbox popover (multi-select with Exclude), while
+// the launch tables keep a single-country drop-down.
 FILTER_BUILDERS.q = (pane, onChange) => {
   const wrap = document.createElement('div');
   wrap.className = 'pane-filter';
-
-  const select = document.createElement('select');
-  select.className = 'pane-country-select';
-  select.setAttribute('aria-label', 'Filter by country');
-  const allOpt = document.createElement('option');
-  allOpt.value = '';
-  allOpt.textContent = 'All';
-  select.append(allOpt);
-
-  const codes = tableCountryCodes(pane.defId);
-  codes.forEach(code => {
-    const opt = document.createElement('option');
-    opt.value = code;
-    opt.textContent = code;
-    select.append(opt);
-  });
-  select.value = pane.filters.countryCode || '';
 
   const input = document.createElement('input');
   input.type = 'search';
@@ -81,24 +75,59 @@ FILTER_BUILDERS.q = (pane, onChange) => {
   hint.className = 'pane-hint';
   hint.textContent = 'Select a row for details';
 
+  let select = null;
+  let countryCtrl;
+  if (pane.defId === 'rockets') {
+    // The rocket chart's country picker; a change re-filters the
+    // visible rows, then persists like any other filter edit.
+    countryCtrl = makeCountryFilter(pane.filters.country,
+      () => { pane.applyFilter(); onChange(); }, ROCKET_TABLE_COUNTRIES);
+  } else {
+    select = document.createElement('select');
+    select.className = 'pane-country-select';
+    select.setAttribute('aria-label', 'Filter by country');
+    const allOpt = document.createElement('option');
+    allOpt.value = '';
+    allOpt.textContent = 'All';
+    select.append(allOpt);
+
+    tableCountryCodes(pane.defId).forEach(code => {
+      const opt = document.createElement('option');
+      opt.value = code;
+      opt.textContent = code;
+      select.append(opt);
+    });
+    select.value = pane.filters.countryCode || '';
+    countryCtrl = select;
+  }
+
   pane.applyFilter = () => {
     pane.filters.q = input.value;
-    pane.filters.countryCode = select.value;
+    if (select) pane.filters.countryCode = select.value;
     const q = input.value.trim().toLowerCase();
-    const c = select.value;
+    const sel = pane.filters.country;
     const rows = [...pane.body.querySelectorAll('tbody tr')];
     rows.forEach(tr => {
       const rowCountry = tr.dataset.country || '';
-      const countryMatches = !c || rowCountry.split(',').map(s => s.trim()).includes(c);
+      const countryMatches = pane.defId === 'rockets'
+        // Chart semantics: the row's whole country string is the key —
+        // 'FRA,RUS' is one option, not two.
+        ? !sel.codes.size || sel.codes.has(rowCountry) !== sel.negate
+        : !select.value
+          || rowCountry.split(',').map(s => s.trim()).includes(select.value);
       const textMatches = q === '' || tr.textContent.toLowerCase().includes(q);
       tr.hidden = !countryMatches || !textMatches;
     });
-    count.textContent = (q || c) ? `${rows.filter(tr => !tr.hidden).length} matches` : '';
+    const countryOn = pane.defId === 'rockets'
+      ? sel.codes.size > 0 || sel.negate : !!select.value;
+    count.textContent = (q || countryOn)
+      ? `${rows.filter(tr => !tr.hidden).length} matches` : '';
   };
 
-  select.addEventListener('change', () => { pane.applyFilter(); onChange(); });
+  if (select) select.addEventListener('change',
+    () => { pane.applyFilter(); onChange(); });
   input.addEventListener('input', () => { pane.applyFilter(); onChange(); });
-  wrap.append(select, input, count, hint);
+  wrap.append(countryCtrl, input, count, hint);
   return wrap;
 };
 
@@ -145,10 +174,15 @@ FILTER_BUILDERS.activeOnly = (pane, onChange) =>
 // table has it, else the newest.
 const freshTableFilters = (defId, year) => {
   const scopes = LAUNCH_SCOPES[defId];
-  return {q: '', countryCode: '', cols: new Set(), ...(scopes
-    ? {year: year === ALL_TIME || scopes.includes(year)
-        ? year : scopes[0]}
-    : {})};
+  return {q: '', countryCode: '', cols: new Set(),
+    // The rockets table's country pick is the chart-style {codes,
+    // negate} selection; the launch tables keep 'countryCode'.
+    ...(defId === 'rockets'
+      ? {country: {codes: new Set(), negate: false}} : {}),
+    ...(scopes
+      ? {year: year === ALL_TIME || scopes.includes(year)
+          ? year : scopes[0]}
+      : {})};
 };
 
 // The 'cols' filter: a checkbox popover over the table spec's `opt`
@@ -530,7 +564,8 @@ function exportCsv(pane) {
 // percent-encoded names, which keeps ; | @ ^ and , safe as separators.
 // Token keys — y: year scope (charts and the past-launches table;
 // 'yall' is the all-time pick they share);
-// c: country codes (! = exclude for charts, cc for tables);
+// c: country codes (! = exclude; charts and the rockets table),
+// cc: launch-table country pick;
 // e: entity picks; r: rocket picks;
 // so/cm/vs/oc: successes-only/cumulative/variant/orbit-capable toggles;
 // ps: bar-chart rows per page; q: table search; k: optional columns;
@@ -563,7 +598,15 @@ const paneTokens = p => {
     if (f.rockets?.size) t.push('r' + encList(f.rockets));
     if (f.pageSize && f.pageSize !== PAGE_SIZE) t.push('ps' + f.pageSize);
   } else {
-    if (f.countryCode) t.push('cc' + encodeURIComponent(f.countryCode));
+    // The launch tables' single-country pick. The rockets table shares
+    // the charts' 'c' token — sorted codes, '!' prefix for Exclude.
+    if (f.countryCode && p.defId !== 'rockets')
+      t.push('cc' + encodeURIComponent(f.countryCode));
+    if (p.defId === 'rockets' && f.country) {
+      const c = f.country;
+      if (c.codes.size || c.negate)
+        t.push('c' + (c.negate ? '!' : '') + encList([...c.codes].sort()));
+    }
     if (f.q) t.push('q' + encodeURIComponent(f.q));
     // The past table carries a year scope too — a non-default pick
     // (default: newest year) serializes like the chart year.

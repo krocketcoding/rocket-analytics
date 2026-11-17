@@ -343,6 +343,53 @@ test('table country filtering matches multi-country providers and combines with 
   assert.equal(count.textContent, '2 matches');
 });
 
+test('the rockets table filters rows with the chart-style country pick', () => {
+  const x = loadApp(makeData());
+  const p = x.panes[1];
+  p.defId = 'rockets';
+  p.filters = {q: '', countryCode: '', cols: new Set(),
+               country: {codes: new Set(), negate: false}};
+  const rows = [
+    {dataset: {country: 'USA'}, textContent: 'Falcon 9', hidden: false},
+    {dataset: {country: 'FRA,RUS'}, textContent: 'Ariane', hidden: false},
+  ];
+  p.body = {querySelectorAll: () => rows};
+  x.FILTER_BUILDERS.q(p, () => {});
+  const c = p.filters.country;
+
+  // Include: only the picked country string survives — 'FRA,RUS' is a
+  // single option, not two codes.
+  c.codes.add('USA');
+  p.applyFilter();
+  assert.equal(rows[0].hidden, false);
+  assert.equal(rows[1].hidden, true);
+
+  // Exclude inverts the match.
+  c.negate = true;
+  p.applyFilter();
+  assert.equal(rows[0].hidden, true);
+  assert.equal(rows[1].hidden, false);
+
+  // Clear restores every row.
+  c.negate = false;
+  c.codes.clear();
+  p.applyFilter();
+  assert.equal(rows[0].hidden, false);
+  assert.equal(rows[1].hidden, false);
+});
+
+test('the rockets table country pick serializes as the chart token', () => {
+  const x = loadApp(makeData());
+  x.applyState({ratio: 0.5, focus: 'split', views: [
+    {v: 'by-rocket', f: {}},
+    {v: 'rockets', f: {country: {codes: new Set(['USA']), negate: true}}},
+  ]});
+  assert.equal(x.serialize(), 'by-rocket|rockets;c!USA');
+  const s = x.parseState('by-rocket|rockets;c!USA');
+  assert.deepEqual(norm([...s.views[1].f.country.codes]), ['USA']);
+  assert.equal(s.views[1].f.country.negate, true);
+});
+
 test('the column pick serializes and parses back', () => {
   const x = loadApp(makeData());
   x.panes[1].filters.cols.add('orbit');

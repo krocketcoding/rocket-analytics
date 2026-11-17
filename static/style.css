@@ -454,7 +454,11 @@ main {
   gap: 0.6rem;
 }
 
-.pane-filter select {
+/* Child combinators throughout: table panes can now nest a pick-pop
+   (the rockets table's chart-style country picker) inside .pane-filter,
+   and a descendant 'input'/'select' rule would restyle the popover's
+   search box and row checkboxes. */
+.pane-filter > select {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -464,12 +468,12 @@ main {
   padding: 0.4rem 0.6rem;
 }
 
-.pane-filter select:focus {
+.pane-filter > select:focus {
   border-color: var(--accent-strong);
   outline: none;
 }
 
-.pane-filter input {
+.pane-filter > input {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -479,12 +483,12 @@ main {
   width: min(220px, 32vw);
 }
 
-.pane-filter input:focus {
+.pane-filter > input:focus {
   border-color: var(--accent-strong);
   outline: none;
 }
 
-.pane-filter input::placeholder {
+.pane-filter > input::placeholder {
   color: var(--dim);
 }
 
@@ -738,7 +742,7 @@ tbody tr[data-set]:focus-visible {
   flex-wrap: wrap;
 }
 
-.pane-filters .overflow-pop .pane-filter input {
+.pane-filters .overflow-pop .pane-filter > input {
   flex: 1;
   min-width: 0;
   width: auto;
