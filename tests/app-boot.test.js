@@ -310,11 +310,12 @@ test('table country filtering matches whole country strings and combines with q 
   ];
   p.body = {querySelectorAll: () => rows};
 
-  // Build the filter builder widget — the chart-style country pick is
-  // children[0]; mutate the pane's {codes, negate} selection directly.
+  // Build the filter builder widget — 'q' is now search-only, so the
+  // input and count are children[0] and [1]; mutate the pane's
+  // {codes, negate} selection directly.
   const wrap = x.FILTER_BUILDERS.q(p, () => {});
-  const input = wrap.children[1];
-  const count = wrap.children[2];
+  const input = wrap.children[0];
+  const count = wrap.children[1];
   const codes = p.filters.country.codes;
 
   // Whole-string match like the charts: 'FRA,RUS' is one option —

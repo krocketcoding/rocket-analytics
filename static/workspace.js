@@ -13,9 +13,12 @@
 // TABLE_SPECS in tables.js, so the same table can be open in both
 // panes (with independent sorts and searches).
 const TABLE_VIEWS = {
-  upcoming: {label: 'Upcoming launches', kind: 'Tables', filters: ['cols', 'q']},
-  past:     {label: 'Previous launches', kind: 'Tables', filters: ['launchYear', 'cols', 'q']},
-  rockets:  {label: 'Rockets',           kind: 'Tables', filters: ['activeOnly', 'cols', 'q']},
+  upcoming: {label: 'Upcoming launches', kind: 'Tables',
+             filters: ['country', 'q', 'cols']},
+  past:     {label: 'Previous launches', kind: 'Tables',
+             filters: ['launchYear', 'country', 'q', 'cols']},
+  rockets:  {label: 'Rockets',           kind: 'Tables',
+             filters: ['country', 'activeOnly', 'q', 'cols']},
 };
 const VIEW_DEFS = {...CHART_DEFS, ...TABLE_VIEWS};
 const isChart = id => id in CHART_DEFS;
@@ -50,9 +53,22 @@ const launchTableCountries = defId => countryStrings(
   (defId === 'upcoming' ? DATA.upcoming : DATA.previous)
     .map(l => DATA.agencies[l.provider_id]?.country));
 
-// The 'q' filter: country pick + search box plus live match count for
-// table panes. The apply routine is stored on the pane so mountPane can
-// re-run it after relocating a table or restoring a saved query.
+// The 'country' filter reuses the charts' picker on table panes.
+// Chart defs resolve their own countryMap, but table rows filter via
+// the pane's applyFilter (owned by 'q'), so a change re-filters the
+// visible rows, then persists like any other filter edit.
+const chartCountryFilter = FILTER_BUILDERS.country;
+FILTER_BUILDERS.country = (pane, reload) => isChart(pane.defId)
+  ? chartCountryFilter(pane, reload)
+  : makeCountryFilter(pane.filters.country,
+      () => { pane.applyFilter?.(); reload(); },
+      pane.defId === 'rockets' ? ROCKET_TABLE_COUNTRIES
+                               : launchTableCountries(pane.defId));
+
+// The 'q' filter: search box plus live match count for table panes.
+// The apply routine is stored on the pane so mountPane can re-run it
+// after relocating a table or restoring a saved query — it reads the
+// 'country' pick too, so both filters share one match count.
 FILTER_BUILDERS.q = (pane, onChange) => {
   const wrap = document.createElement('div');
   wrap.className = 'pane-filter';
@@ -63,16 +79,6 @@ FILTER_BUILDERS.q = (pane, onChange) => {
   input.value = pane.filters.q || '';
   const count = document.createElement('span');
   count.className = 'pane-filter-count';
-  const hint = document.createElement('span');
-  hint.className = 'pane-hint';
-  hint.textContent = 'Select a row for details';
-
-  // The charts' country picker; a change re-filters the visible rows,
-  // then persists like any other filter edit.
-  const countryCtrl = makeCountryFilter(pane.filters.country,
-    () => { pane.applyFilter(); onChange(); },
-    pane.defId === 'rockets' ? ROCKET_TABLE_COUNTRIES
-                             : launchTableCountries(pane.defId));
 
   pane.applyFilter = () => {
     pane.filters.q = input.value;
@@ -92,7 +98,7 @@ FILTER_BUILDERS.q = (pane, onChange) => {
   };
 
   input.addEventListener('input', () => { pane.applyFilter(); onChange(); });
-  wrap.append(countryCtrl, input, count, hint);
+  wrap.append(input, count);
   return wrap;
 };
 
@@ -162,7 +168,7 @@ FILTER_BUILDERS.cols = (pane, onChange) => {
   // reads and writes its membership inverted.
   const kind = new Map(opts.map(c => [c.opt || c.hide, c.opt ? 'opt' : 'hide']));
   [...sel].forEach(v => { if (!kind.has(v)) sel.delete(v); });
-  return makeCheckPopover({
+  const pop = makeCheckPopover({
     title: 'Columns',
     options: opts.map(c => [c.opt || c.hide, c.head]),
     sel,
@@ -178,6 +184,16 @@ FILTER_BUILDERS.cols = (pane, onChange) => {
       return true;
     },
   });
+  // The 'select a row' hint rides with Columns — filters run 'q' before
+  // 'cols' so the head reads search, count, columns, hint, and as one
+  // control the pair spills into the ⋯ pop together.
+  const wrap = document.createElement('div');
+  wrap.className = 'pane-cols';
+  const hint = document.createElement('span');
+  hint.className = 'pane-hint';
+  hint.textContent = 'Select a row for details';
+  wrap.append(pop, hint);
+  return wrap;
 };
 
 const workspaceEl = $('workspace');

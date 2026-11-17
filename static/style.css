@@ -454,10 +454,19 @@ main {
   gap: 0.6rem;
 }
 
-/* Child combinators throughout: table panes can now nest a pick-pop
-   (the rockets table's chart-style country picker) inside .pane-filter,
-   and a descendant 'input'/'select' rule would restyle the popover's
-   search box and row checkboxes. */
+/* Columns picker + 'select a row' hint — same flex row as
+   .pane-filter, under its own class so the ⋯ pop's full-width rule
+   only claims the search row. */
+.pane-cols {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+/* Child combinators throughout: a picker popover nested inside a
+   filter row would otherwise have its search box and row checkboxes
+   restyled by the row's 'input'/'select' rules. */
 .pane-filter > select {
   background: var(--bg);
   border: 1px solid var(--border);
@@ -735,9 +744,11 @@ tbody tr[data-set]:focus-visible {
   width: max-content;
 }
 
-/* Inside the ⋯ pop the search box claims the full width: the row
-   wraps, input+match-count share the first line, and the 'select a
-   row' hint drops to its own. */
+/* Inside the ⋯ pop the grouped table controls each claim a full
+   line: 'q' (.pane-filter — search box + match count) wraps so the
+   input fills the row, and 'cols' (.pane-cols — picker + 'select a
+   row' hint) gets the panel width so the hint can share the
+   picker's line when it fits. */
 .pane-filters .overflow-pop .pane-filter {
   flex-wrap: wrap;
 }
@@ -748,8 +759,12 @@ tbody tr[data-set]:focus-visible {
   width: auto;
 }
 
-.pane-filters .overflow-pop .pane-hint {
-  flex: 0 0 100%;
+/* The 'select a row' hint rides beside the Columns picker when the
+   panel is wide enough — .pane-cols wraps, so it drops below only
+   when it can't fit. This overrides the mobile rule that forces it
+   to a full line on the pane head. */
+.pane-filters .overflow-pop .pane-cols .pane-hint {
+  flex: 0 0 auto;
 }
 
 /* Segs can't share a phone-width panel horizontally — inside the ⋯
@@ -1210,17 +1225,35 @@ tbody tr[data-set]:focus-visible {
     margin-bottom: 0.5rem;
   }
 
-  /* The table filter row wraps internally on phones — country picker,
-     search box, and match count share the first line while the 'select
-     a row' hint drops below — so the control can shrink to fit the
-     pane head instead of pushing a second line of controls. Same
-     pattern the ⋯ overflow pop already uses. */
+  /* The table filter controls wrap internally on phones — the search
+     row and the columns/hint pair each shrink to fit the pane head —
+     so they don't push a second line of controls. Same pattern the ⋯
+     overflow pop already uses. */
   .pane-filter {
     flex-wrap: wrap;
+  }
+
+  .pane-filter,
+  .pane-cols {
     row-gap: 0.2rem;
   }
 
-  .pane-filter .pane-hint {
+  .pane-cols .pane-hint {
+    flex: 0 0 100%;
+  }
+
+  /* Inside the ⋯ pop controls flow as a wrapped row: narrow pickers
+     (country, entity, rocket…) pack two-to-a-row, while the grouped
+     table controls — 'q' (search + count) and 'cols' (picker + hint)
+     — each claim a full line. Full-width rules on segs, the year
+     pager, and the icon buttons keep those on their own lines too. */
+  .pane-filters .overflow-pop {
+    flex-flow: row wrap;
+    align-content: flex-start;
+  }
+
+  .pane-filters .overflow-pop .pane-filter,
+  .pane-filters .overflow-pop .pane-cols {
     flex: 0 0 100%;
   }
 
