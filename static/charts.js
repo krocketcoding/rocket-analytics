@@ -167,7 +167,18 @@ function makeCheckPopover(opts) {
   clear.className = 'pick-reset';
   clear.type = 'button';
   clear.textContent = resetLabel;
-  head.append(title, clear);
+  // Full-screen pickers on phones have no outside to tap — the ✕ is
+  // CSS-hidden everywhere else (charts.js's outside-click closes them).
+  const close = document.createElement('button');
+  close.className = 'pick-close';
+  close.type = 'button';
+  close.textContent = '✕';
+  close.setAttribute('aria-label', 'Close');
+  close.addEventListener('click', () => { pop.hidden = true; });
+  const actions = document.createElement('span');
+  actions.className = 'pick-pop-actions';
+  actions.append(clear, close);
+  head.append(title, actions);
   pop.append(head);
   const search = addPopSearch(pop);
   pop.append(...(typeof extraRows === 'function' ? extraRows(emit) : extraRows));

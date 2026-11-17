@@ -891,6 +891,25 @@ tbody tr[data-set]:focus-visible {
   color: var(--text);
 }
 
+.pick-pop-actions {
+  align-items: center;
+  display: flex;
+  gap: 0.75rem;
+}
+
+/* The ✕ only appears when a picker goes full-screen on phones —
+   wider layouts close pickers by tapping outside. */
+.pick-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  display: none;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 0.1rem;
+}
+
 /* Popover filter box — --bg reads as inset against the popover's
    --surface. */
 .pop-search {
@@ -1283,6 +1302,42 @@ tbody tr[data-set]:focus-visible {
 
   /* (Donut stacking is handled by .pane.narrow — real pane width, not
      the viewport breakpoint.) */
+
+  /* Picker popovers go full-screen on phones — the anchored dropdown
+     is too cramped for long option lists, and a picker spilled into
+     the ⋯ pop was a popover within a popover. The ✕ close appears
+     since there's no outside to tap, and the head sticks while the
+     list scrolls. .overflow-pop itself is exempt (it's the menu, not
+     a picker); pickers nested inside it still go full-screen. */
+  .pane .pick-pop:not(.overflow-pop) {
+    border: none;
+    border-radius: 0;
+    height: auto;
+    inset: 0;
+    margin: 0;
+    max-height: none;
+    max-width: none;
+    min-width: 0;
+    /* The head goes flush to the top edge instead of bleeding in
+       with a negative margin — a sticky element's negative margin
+       shifts its box up and clips the row beneath it. */
+    padding-top: 0;
+    position: fixed;
+    width: auto;
+  }
+
+  .pane .pick-pop:not(.overflow-pop) .pick-close {
+    display: inline-block;
+  }
+
+  .pane .pick-pop:not(.overflow-pop) .pick-pop-head {
+    background: var(--surface);
+    margin: 0 -0.75rem 0.2rem;
+    padding: 0.6rem 0.75rem 0.3rem;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
 
   /* Roomier touch targets on the picker rows */
   .pick-row {
