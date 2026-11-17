@@ -7,9 +7,12 @@
 // html?(rec)}: `text` is the cell's plain value — it feeds the CSV
 // directly and is HTML-escaped for the <td>; `html` overrides the cell
 // markup when the value needs markup (the two-line date, the status
-// badge); `sort` names the record key a header click can order by
-// (rockets only); `headHtml` overrides the header text when it needs
-// markup; `net` marks the date column so it keeps the data-net
+// badge); `sort` names the key a header click orders by (rockets
+// only) — the record field by default, or `sortVal(rec)` when the
+// cell shows a derived value; `sortAsc` opens a text column A→Z on
+// the first click (everything else opens largest/newest first);
+// `headHtml` overrides the header text when it needs markup; `net`
+// marks the date column so it keeps the data-net
 // attribute the stylesheet's nowrap rule hooks. `opt`/`hide` mark
 // toggleable columns: `opt` starts hidden, `hide` starts shown — and
 // filters.cols holds the keys flipped away from that default.
@@ -45,9 +48,12 @@ const launchCols = withStatus => [
 ];
 
 const rocketCols = [
-  {head: 'Name', text: r => r.name || '—'},
-  // The manufacturer is a row in the merged agencies table.
-  {hide: 'provider', head: 'Provider',
+  {head: 'Name', sort: 'name', sortAsc: true, text: r => r.name || '—'},
+  // The manufacturer is a row in the merged agencies table — the sort
+  // key can't be the record's manufacturer_id (ids don't order), so
+  // sortVal resolves the agency name the cell shows.
+  {hide: 'provider', head: 'Provider', sort: 'provider', sortAsc: true,
+   sortVal: r => DATA.agencies[r.manufacturer_id]?.name,
    text: r => DATA.agencies[r.manufacturer_id]?.name || '—'},
   {hide: 'leo', head: 'LEO capacity', sort: 'leo_capacity',
    text: r => r.leo_capacity != null ? num(r.leo_capacity, 'kg') : '—'},
@@ -59,7 +65,7 @@ const rocketCols = [
   {opt: 'thrust', head: 'Thrust', sort: 'thrust',
    text: r => r.thrust != null ? num(r.thrust, 'kN') : '—'},
   {opt: 'maiden', head: 'Maiden flight', sort: 'maiden_flight',
-   text: r => r.maiden_flight || '—'},
+   sortAsc: true, text: r => r.maiden_flight || '—'},
   {opt: 'streak', head: 'Success streak', headHtml: 'Success<br>streak',
    sort: 'streak', text: r => r.streak != null ? String(r.streak) : '—'},
 ];
@@ -83,6 +89,14 @@ const defaultRocketRows = () =>
       || byName(a.name || '', b.name || ''))
     .map(([id, rec]) => ({rec, set: 'rockets', key: id}));
 
+// Sort accessors: `sort` is a record key unless the column carries
+// sortVal for a derived display value. The key stays a plain string
+// either way so it serializes into the workspace hash.
+const sortGetter = key => {
+  const col = rocketCols.find(c => c.sort === key);
+  return col?.sortVal ?? (r => r[key]);
+};
+
 // Re-sort from the default order so a stored sort replays
 // deterministically; unknowns stay at the bottom in either direction.
 function rocketRows(pane) {
@@ -93,9 +107,10 @@ function rocketRows(pane) {
     .filter(r => !pane.filters.activeOnly || isActiveRocket(r.rec));
   const key = pane.filters.sort;
   if (!key) return rows;
+  const get = sortGetter(key);
   const mul = (pane.filters.dir || 'desc') === 'desc' ? 1 : -1;
   return rows.sort((a, b) => {
-    const va = a.rec[key], vb = b.rec[key];
+    const va = get(a.rec), vb = get(b.rec);
     if (va == null) return vb == null ? 0 : 1;
     if (vb == null) return -1;
     // Numeric keys compare by value; string keys (maiden_flight's ISO
@@ -203,15 +218,20 @@ function refreshTable(pane) {
   pane.applyFilter?.();
 }
 
-// Header click on a sortable rockets column: a new column sorts
-// descending, re-clicking flips. The choice is per-pane filter state
-// ({sort, dir}) so it serializes into the workspace hash and replays
-// on restore; the 'q' filter re-applies over the rebuilt rows.
+// Header click on a sortable rockets column: a new column takes its
+// natural first direction — text columns A→Z (sortAsc), numbers and
+// dates largest/newest first — and re-clicking flips. The choice is
+// per-pane filter state ({sort, dir}) so it serializes into the
+// workspace hash and replays on restore; the 'q' filter re-applies
+// over the rebuilt rows.
 function sortPaneTable(pane, key) {
   const curKey = pane.filters.sort || 'launches';
   const curDir = pane.filters.dir || 'desc';
   pane.filters.sort = key;
-  pane.filters.dir = key === curKey && curDir === 'desc' ? 'asc' : 'desc';
+  const first = rocketCols.find(c => c.sort === key)?.sortAsc
+    ? 'asc' : 'desc';
+  const flip = first === 'asc' ? 'desc' : 'asc';
+  pane.filters.dir = key === curKey && curDir === first ? flip : first;
   refreshTable(pane);
   saveState();
 }

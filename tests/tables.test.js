@@ -165,6 +165,20 @@ test('rocketRows sorts by optional numeric and date keys', () => {
   assert.equal(byMaiden.at(-1).rec.maiden_flight, undefined);
 });
 
+test('rocketRows sorts name and the derived provider column', () => {
+  const x = loadTables(makeData());
+  const names = s => x.rocketRows(pane('rockets', s))
+    .map(r => r.rec.name).join('|');   // vm arrays fail deepEqual
+  assert.equal(names({sort: 'name', dir: 'asc'}),
+    'Falcon 9|NeverFlew|NoMfr|OldOrb|Sounder');
+  // Provider sorts on the resolved agency name — 'SubOrbital Inc'
+  // beats 'Space Exploration' descending, and NoMfr's missing agency
+  // stays bottom like any other unknown.
+  const byProvider = names({sort: 'provider', dir: 'desc'}).split('|');
+  assert.equal(byProvider[0], 'Sounder');
+  assert.equal(byProvider.at(-1), 'NoMfr');
+});
+
 test('renderTable includes data-country on table rows', () => {
   const data = makeData();
   data.agencies[12] = {name: 'MultiAgency', country: 'FRA,RUS'};
