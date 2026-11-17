@@ -1,3 +1,7 @@
+# All text files use LF in the repository and working tree, on every
+# platform — mixed endings make diffs noisy and merges fragile.
+* text=auto eol=lf
+
 # JSONL shards are diffed line-by-line and written with \n by the build —
-# CRLF conversion would turn every shard into whole-file diff noise.
+# pinned explicitly since they're the archive's committed store.
 *.jsonl text eol=lf
