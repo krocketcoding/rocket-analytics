@@ -87,9 +87,10 @@ const defaultRocketRows = () =>
 // deterministically; unknowns stay at the bottom in either direction.
 function rocketRows(pane) {
   // The 'Active only' toggle keeps just rockets known to be active —
-  // a null active flag (no status on record) can't confirm it is.
+  // stats.js's isActiveRocket is the shared test (a null active flag
+  // can't confirm it).
   const rows = defaultRocketRows()
-    .filter(r => !pane.filters.activeOnly || r.rec.active === true);
+    .filter(r => !pane.filters.activeOnly || isActiveRocket(r.rec));
   const key = pane.filters.sort;
   if (!key) return rows;
   const mul = (pane.filters.dir || 'desc') === 'desc' ? 1 : -1;

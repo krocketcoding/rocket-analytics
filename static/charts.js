@@ -347,6 +347,10 @@ const FILTER_BUILDERS = {
   // record). The label names the capability, not the launch category:
   // a kept rocket's suborbital launches still chart.
   orbital: makeToggle('Orbit-capable only', 'orbitCapable'),
+  // 'Active only' — the rocket bar chart keeps just rockets with a
+  // confirmed active status, the same test the rockets table's
+  // Active only checkbox applies.
+  active: makeToggle('Active only', 'activeOnly'),
   // 'Cumulative' turns a trend's per-year counts into a running total.
   cumulative: makeToggle('Cumulative', 'cumulative'),
   // The rocket-family chart stacks two ways — launch categories or
@@ -455,5 +459,5 @@ function attachPager(els, getChart) {
 const freshFilters = year => ({year,
   country: {codes: new Set(), negate: false}, successOnly: false,
   cumulative: false, variantStack: false, orbitCapable: false,
-  pageSize: PAGE_SIZE,
+  activeOnly: false, pageSize: PAGE_SIZE,
   entities: new Set(), rockets: new Set()});

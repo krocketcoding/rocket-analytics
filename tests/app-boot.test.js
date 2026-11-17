@@ -252,11 +252,12 @@ test('serialize writes every non-default filter token', () => {
   f.cumulative = true;
   f.variantStack = true;
   f.orbitCapable = true;
+  f.activeOnly = true;
   f.entities.add('Falcon 9');
   f.rockets.add('Falcon 9');
   f.pageSize = 50;
   assert.equal(x.serialize(),
-    'by-rocket;y2024;c!FRA,USA;so;cm;vs;oc;eFalcon%209;rFalcon%209;ps50' +
+    'by-rocket;y2024;c!FRA,USA;so;cm;vs;oc;ao;eFalcon%209;rFalcon%209;ps50' +
     '|upcoming');
 });
 

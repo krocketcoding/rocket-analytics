@@ -50,7 +50,8 @@ const x = loadSrcs(['chart-factories.js', 'stats.js', 'chart-defs.js'],
 const fs_ = (year, extra = {}) => ({
   year, country: {codes: new Set(), negate: false}, successOnly: false,
   cumulative: false, variantStack: false, orbitCapable: false,
-  pageSize: 10, entities: new Set(), rockets: new Set(), ...extra});
+  activeOnly: false, pageSize: 10, entities: new Set(), rockets: new Set(),
+  ...extra});
 
 test('rowTotal: plain count, cat dict, and nullish', () => {
   assert.equal(x.rowTotal(5), 5);
@@ -85,6 +86,20 @@ test('orbit-capable filter drops suborbital-only rockets', () => {
     fs_('2024', {orbitCapable: true}));
   assert.deepEqual(norm(Object.keys(rows)),
                    ['Falcon 9', 'NoMfr', 'OldOrb']);
+});
+
+test('active-only filter keeps just confirmed-active rockets', () => {
+  // Of the 2024 rockets only Falcon 9 is flagged active — OldOrb is
+  // retired and Sounder/NoMfr have no status on record.
+  const rows = x.CHART_DEFS['by-rocket'].data(
+    fs_('2024', {activeOnly: true}));
+  assert.deepEqual(norm(Object.keys(rows)), ['Falcon 9']);
+  // The donut def doesn't offer the toggle, so its rows mapping is
+  // unaffected even if the flag is set.
+  const donut = x.CHART_DEFS['by-rocket-donut'].data(
+    fs_('2024', {activeOnly: true}));
+  assert.deepEqual(norm(Object.keys(donut)),
+                   ['Falcon 9', 'NoMfr', 'OldOrb', 'Sounder']);
 });
 
 test('donut success-only drops the failed segment', () => {

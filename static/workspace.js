@@ -132,24 +132,12 @@ FILTER_BUILDERS.launchYear = (pane, onChange) => {
 };
 
 // The 'activeOnly' filter: an "Active only" checkbox on the rockets
-// table. Like the year scope it's a row filter, so a change rebuilds
-// the table (re-running the search filter over the new rows) — it
-// can't reuse charts.js's makeToggle, whose reload only reloads a
-// chart dataset.
-FILTER_BUILDERS.activeOnly = (pane, onChange) => {
-  const label = document.createElement('label');
-  label.className = 'success-toggle';
-  const cb = document.createElement('input');
-  cb.type = 'checkbox';
-  cb.checked = !!pane.filters.activeOnly;
-  cb.addEventListener('change', () => {
-    pane.filters.activeOnly = cb.checked;
-    refreshTable(pane);
-    onChange();
-  });
-  label.append(cb, ' Active only');
-  return label;
-};
+// table — charts.js's makeToggle, but a change also rebuilds the table
+// (re-running the search filter over the new rows) before persisting;
+// a chart-style reload alone wouldn't.
+FILTER_BUILDERS.activeOnly = (pane, onChange) =>
+  makeToggle('Active only', 'activeOnly')(pane,
+    () => { refreshTable(pane); onChange(); });
 
 // Table filter state: the search text, the country code pick, the
 // optional-column pick, plus the year scope for tables that offer one
@@ -546,7 +534,8 @@ function exportCsv(pane) {
 // e: entity picks; r: rocket picks;
 // so/cm/vs/oc: successes-only/cumulative/variant/orbit-capable toggles;
 // ps: bar-chart rows per page; q: table search; k: optional columns;
-// t: rockets sort as <key>.<dir>; ao: rockets active-only toggle. The
+// t: rockets sort as <key>.<dir>; ao: active-only toggle (rocket bar
+// chart and rockets table). The
 // same string is kept in
 // localStorage so the layout survives between visits; the hash wins
 // on load.
@@ -569,6 +558,7 @@ const paneTokens = p => {
     if (f.cumulative) t.push('cm');
     if (f.variantStack) t.push('vs');
     if (f.orbitCapable) t.push('oc');
+    if (f.activeOnly) t.push('ao');
     if (f.entities?.size) t.push('e' + encList(f.entities));
     if (f.rockets?.size) t.push('r' + encList(f.rockets));
     if (f.pageSize && f.pageSize !== PAGE_SIZE) t.push('ps' + f.pageSize);

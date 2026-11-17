@@ -60,6 +60,11 @@ const topNested = cats => Object.fromEntries(Object.entries(cats)
     - Object.values(ra).reduce((s, r) => s + rowSum(r), 0)
     || byName(na, nb)));
 
+// The 'Active only' test shared by the rockets table and the rocket
+// bar chart: only a confirmed active flag counts — a null flag (no
+// status on record) can't confirm the rocket is still flying.
+const isActiveRocket = rec => rec.active === true;
+
 function computeStats(data) {
   // Chart labels use the manufacturer abbreviation; keep the full name
   // around so the frontend can show it too.
@@ -194,6 +199,12 @@ function computeStats(data) {
     .filter(r => r.name && (r.leo_capacity > 0 || orbitalTotals[r.name] > 0))
     .map(r => r.name));
 
+  // Rocket names passing isActiveRocket — the rocket charts' 'Active
+  // only' filter reads this set.
+  const activeRockets = new Set(Object.values(data.rockets)
+    .filter(r => r.name && isActiveRocket(r))
+    .map(r => r.name));
+
   return {
     yearly,
     manufacturerNames,
@@ -204,6 +215,7 @@ function computeStats(data) {
     rocketManufacturers,
     siteNames,
     orbitCapable,
+    activeRockets,
   };
 }
 

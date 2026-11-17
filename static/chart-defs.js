@@ -56,13 +56,21 @@ const applyCountryFilter = (data, sel, map = ROCKET_COUNTRIES) => {
     .filter(([name]) => sel.codes.has(map[name]) !== sel.negate));
 };
 
-// Restrict {name: counts} rows to rockets that can reach orbit —
-// STATS.orbitCapable decides (a positive LEO capacity or an orbital
-// launch on record). Capability is a rocket property, so the check
-// ignores the year scope.
-const applyOrbitFilter = (rows, on) => !on ? rows
-  : Object.fromEntries(Object.entries(rows)
-      .filter(([name]) => STATS.orbitCapable.has(name)));
+// Restrict {name: counts} rows to names in a STATS set — the shared
+// shape of the rocket charts' capability/status filters.
+const applySetFilter = (rows, on, names) => !on ? rows
+  : Object.fromEntries(Object.entries(rows).filter(([name]) => names.has(name)));
+
+// Rockets that can reach orbit — STATS.orbitCapable decides (a
+// positive LEO capacity or an orbital launch on record). Capability
+// is a rocket property, so the check ignores the year scope.
+const applyOrbitFilter = (rows, on) =>
+  applySetFilter(rows, on, STATS.orbitCapable);
+
+// Rockets with a confirmed active status — STATS.activeRockets is
+// built on stats.js's isActiveRocket, the rockets table's test too.
+const applyActiveFilter = (rows, on) =>
+  applySetFilter(rows, on, STATS.activeRockets);
 
 // Donut defs share the bar charts' categorized rows but need flat
 // {label: count} slices: total each row, dropping 'failed' when the
@@ -177,8 +185,14 @@ const GROUPS = {
 // (the comment on CHART_DEFS): Bars pages a stacked category chart,
 // Donut flattens rows to {label: count} slices, Trend charts one
 // series per entity pick.
-const barDef = g => ({label: g.label, kind: 'Bars', filters: ['year', ...g.filters, 'pageSize'], countryMap: g.countryMap,
-                      entities: g.entities, unit: 'launches', data: g.rows,
+// `extra` lets a def extend the shared shape: `filters` adds control
+// names after the group's own (before 'pageSize'), `data` replaces the
+// group's rows mapping.
+const barDef = (g, extra = {}) => ({label: g.label, kind: 'Bars',
+                      filters: ['year', ...g.filters, ...(extra.filters ?? []), 'pageSize'],
+                      countryMap: g.countryMap,
+                      entities: g.entities, unit: 'launches',
+                      data: extra.data ?? g.rows,
                       mount: pane => stackedBarChart(pane.querySelector('canvas'), g.names)});
 const donutDef = g => ({label: g.label, kind: 'Donuts', filters: ['year', ...g.filters, 'success'], countryMap: g.countryMap,
                         entities: g.entities, data: s => donutSlices(g.rows(s), s.successOnly),
@@ -215,7 +229,7 @@ const variantBarDef = (label, nested, {filters = [], countryMap, names, entities
 // under an optgroup heading. Each def lists the filters it supports
 // (each name renders a control in the pane header), maps a filter-state
 // object {year, country, successOnly, cumulative, variantStack,
-// entities, rockets, orbitCapable} to its dataset ('pageSize' lives there too but
+// entities, rockets, orbitCapable, activeOnly} to its dataset ('pageSize' lives there too but
 // configures the paged view, not the data), and mounts a chart object
 // inside
 // a .chart-pane — the pager shows only when the instance's pageCount()
@@ -225,7 +239,13 @@ const variantBarDef = (label, nested, {filters = [], countryMap, names, entities
 // provide `entities` — [value, label] pairs feeding the 'entity'
 // popover (trends) or the 'rocket' filter (site charts).
 const CHART_DEFS = {
-  'by-rocket': barDef(GROUPS.rocket),
+  // The rocket bars alone offer 'active' — the rockets table's
+  // Active only equivalent. It wraps the group's rows rather than
+  // joining g.filters so the donut view doesn't inherit the toggle.
+  'by-rocket': barDef(GROUPS.rocket, {
+    filters: ['active'],
+    data: s => applyActiveFilter(GROUPS.rocket.rows(s), s.activeOnly),
+  }),
   'by-rocket-family': variantBarDef('Rocket family',
     s => yearRows('families', s.year)),
   // Manufacturer bars regroup the flat rockets bucket into
