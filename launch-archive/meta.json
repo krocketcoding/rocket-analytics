@@ -1,11 +1,11 @@
 {
-  "api_count": 7663,
+  "api_count": 7667,
   "complete": true,
   "format_version": 1,
-  "generated_at": "2026-11-15T05:28:29.949844+00:00",
-  "launch_count": 7663,
+  "generated_at": "2026-11-22T05:32:40.477336+00:00",
+  "launch_count": 7667,
   "ll2_version": "2.2.0",
-  "max_last_updated": "2026-11-15T01:57:37Z",
+  "max_last_updated": "2026-11-22T02:11:32Z",
   "source": {
     "name": "Launch Library 2 (The Space Devs)",
     "terms": "https://github.com/TheSpaceDevs/Tutorials/blob/main/faqs/faq_TSD.md",
