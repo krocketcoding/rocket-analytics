@@ -14,15 +14,12 @@ permissions:
 
 concurrency:
   group: pages
-  # Pushes supersede any run in progress; scheduled runs queue instead.
+  # Pushes supersede any run in progress; scheduled runs wait instead.
   cancel-in-progress: ${{ github.event_name == 'push' }}
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -58,5 +55,16 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: site/
+
+  # deploy-pages lists artifacts as soon as it starts. In the same job as the
+  # upload, that list can still be empty (actions/deploy-pages#451). A later
+  # job sees the artifact after the upload job has finished.
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v5
